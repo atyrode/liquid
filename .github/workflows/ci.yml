@@ -7,8 +7,8 @@ on:
       - main
 
 jobs:
-  shell:
-    name: shell
+  evaluate:
+    name: evaluate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
