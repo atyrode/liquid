@@ -15,9 +15,13 @@ jobs:
       - uses: cachix/install-nix-action@v31
       - name: Evaluate Pi image
         run: nix eval .#nixosConfigurations.pi3a.config.system.build.sdImage.drvPath
+      - name: Evaluate GUI Pi image
+        run: nix eval .#nixosConfigurations.pi3a-gui.config.system.build.sdImage.drvPath
       - name: Verify SSH is enabled
         run: test "$(nix eval .#nixosConfigurations.pi3a.config.services.openssh.enable)" = true
       - name: Verify Bluetooth is enabled
         run: test "$(nix eval .#nixosConfigurations.pi3a.config.hardware.bluetooth.enable)" = true
+      - name: Verify GUI is enabled
+        run: test "$(nix eval .#nixosConfigurations.pi3a-gui.config.services.xserver.enable)" = true
       - name: Verify Pi Bluetooth attach service
         run: nix eval .#nixosConfigurations.pi3a.config.systemd.services.btattach.serviceConfig.ExecStart | grep -q btattach
