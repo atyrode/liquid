@@ -1,0 +1,8 @@
+.agents/
+.codex/
+.git/
+result
+result-*
+*.img
+*.img.zst
+secrets/wifi-secrets.conf
