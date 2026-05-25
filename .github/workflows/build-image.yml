@@ -1,0 +1,130 @@
+name: Build image
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/build-image.yml
+      - image/**
+      - scripts/bootstrap-pi.sh
+      - scripts/pi-doctor.sh
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Optional release tag, for example liquid-rpi3-lite-2026-05-25
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build liquid-rpi3-lite
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    env:
+      IMAGE_NAME: liquid-rpi3-lite
+      RPI_IMAGE_GEN_REF: v2.6.0
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install rpi-image-gen
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends git zstd xz-utils
+          git clone --depth 1 --branch "$RPI_IMAGE_GEN_REF" https://github.com/raspberrypi/rpi-image-gen.git /tmp/rpi-image-gen
+          cd /tmp/rpi-image-gen
+          sudo ./install_deps.sh
+
+      - name: Build image
+        run: |
+          set -euo pipefail
+          /tmp/rpi-image-gen/rpi-image-gen metadata --lint "$GITHUB_WORKSPACE/image/layer/liquid-headless-kit.yaml"
+          /tmp/rpi-image-gen/rpi-image-gen build \
+            -S "$GITHUB_WORKSPACE/image" \
+            -c "$GITHUB_WORKSPACE/image/config/liquid-rpi3-lite.yaml"
+
+          image_path="$(find /tmp/rpi-image-gen/work -type f \( -name '*.img' -o -name '*.img.zst' -o -name '*.img.xz' \) -print | sort | tail -n 1)"
+          test -n "$image_path"
+
+          short_sha="$(git rev-parse --short HEAD)"
+          release_tag="$RELEASE_TAG"
+          if [ -z "$release_tag" ] && [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            release_tag="$IMAGE_NAME-$(date -u +%Y-%m-%d)-$short_sha"
+          fi
+          release_tag="${release_tag//\//-}"
+          printf 'RELEASE_TAG=%s\n' "$release_tag" >> "$GITHUB_ENV"
+
+          asset_base="$IMAGE_NAME-$short_sha"
+          if [ -n "$release_tag" ]; then
+            case "$release_tag" in
+              "$IMAGE_NAME"-*)
+                asset_base="$release_tag"
+                ;;
+              *)
+                asset_base="$IMAGE_NAME-$release_tag"
+                ;;
+            esac
+          fi
+
+          mkdir -p dist
+          case "$image_path" in
+            *.img.zst)
+              image_name="$asset_base.img.zst"
+              cp "$image_path" "dist/$image_name"
+              ;;
+            *.img.xz)
+              image_name="$asset_base.img.xz"
+              cp "$image_path" "dist/$image_name"
+              ;;
+            *.img)
+              image_name="$asset_base.img.zst"
+              zstd -T0 -19 -o "dist/$image_name" "$image_path"
+              ;;
+            *)
+              echo "Unexpected image path: $image_path" >&2
+              exit 1
+              ;;
+          esac
+
+          ( cd dist && sha256sum "$image_name" > "$image_name.sha256" )
+          ls -lh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liquid-rpi3-lite-${{ github.run_number }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload release assets
+        if: ${{ github.event_name == 'push' || inputs.release_tag != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-dist
+          for asset in dist/*; do
+            name="$(basename "$asset")"
+            if [ "$(stat -c %s "$asset")" -gt 2000000000 ]; then
+              split -b 1900M -d -a 2 "$asset" "release-dist/$name.part-"
+              cat > "release-dist/$name.reassemble.txt" <<EOF
+          Reassemble:
+            cat $name.part-* > $name
+            sha256sum -c $name.sha256
+          EOF
+            else
+              cp "$asset" "release-dist/$name"
+            fi
+          done
+
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --title "$RELEASE_TAG" \
+              --notes "Automated Raspberry Pi OS Lite image build for ${IMAGE_NAME} from ${GITHUB_SHA}."
+          fi
+          gh release upload "$RELEASE_TAG" release-dist/* --clobber

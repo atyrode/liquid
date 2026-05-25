@@ -13,11 +13,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Check shell syntax
-        run: bash -n scripts/*.sh
+        run: |
+          bash -n scripts/*.sh
+          bash -n image/files/usr/local/sbin/liquid-bootstrap
+          bash -n image/files/usr/local/sbin/liquid-doctor
+      - name: Verify image scripts match operator scripts
+        run: |
+          cmp scripts/bootstrap-pi.sh image/files/usr/local/sbin/liquid-bootstrap
+          cmp scripts/pi-doctor.sh image/files/usr/local/sbin/liquid-doctor
       - name: Run ShellCheck when available
         run: |
           if command -v shellcheck >/dev/null 2>&1; then
             shellcheck scripts/*.sh
+            shellcheck image/files/usr/local/sbin/liquid-bootstrap
+            shellcheck image/files/usr/local/sbin/liquid-doctor
           else
             echo "shellcheck not installed; skipping"
           fi
