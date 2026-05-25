@@ -25,6 +25,8 @@ psk_livebox=your-wifi-password
 
 Use the GitHub workflow when building from an x86_64 machine. The normal image is an ARM64 NixOS system, so local x86_64 builds either need emulation or a slow cross build.
 
+Changes merged to `main` under `nixos/`, `firmware/`, `flake.nix`, `flake.lock`, or the image build workflow automatically build the GUI image and publish a release such as `pi3a-gui-lite-2026-05-25-abcdef0`. That keeps the latest public release aligned with OS/image changes.
+
 From the GitHub UI:
 
 1. Open **Actions**.
