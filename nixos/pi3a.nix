@@ -11,6 +11,10 @@
   networking.hostName = "dogpi";
   networking.useDHCP = lib.mkDefault true;
 
+  # Pi 3 onboard Bluetooth uses ttyAMA0. Keep the HDMI console, but do not
+  # attach a serial console to the UART Bluetooth needs.
+  boot.kernelParams = lib.mkForce [ "console=tty0" ];
+
   # The generic aarch64 SD module marks /boot/firmware as noauto.
   # We mount it so wpa_supplicant can read wifi-secrets.conf from the FAT partition.
   fileSystems."/boot/firmware".options = lib.mkForce [
@@ -49,8 +53,27 @@
     openFirewall = true;
   };
 
-  # Keep first boot lean. Enable bluetooth later once SSH is stable.
-  hardware.bluetooth.enable = false;
+  hardware.bluetooth = {
+    enable = true;
+    powerOnBoot = true;
+  };
+
+  systemd.services = {
+    bluetooth.wantedBy = lib.mkAfter [ "multi-user.target" ];
+
+    btattach = {
+      description = "Attach Raspberry Pi 3 onboard Bluetooth controller";
+      before = [ "bluetooth.service" ];
+      after = [ "dev-ttyAMA0.device" ];
+      requires = [ "dev-ttyAMA0.device" ];
+      wantedBy = [ "multi-user.target" ];
+      serviceConfig = {
+        ExecStart = "${pkgs.bluez}/bin/btattach -B /dev/ttyAMA0 -P bcm -S 3000000";
+        Restart = "on-failure";
+        RestartSec = 2;
+      };
+    };
+  };
 
   zramSwap = {
     enable = true;

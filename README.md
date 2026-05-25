@@ -2,6 +2,8 @@
 
 This builds a 64-bit NixOS SD image for a Raspberry Pi 3 A+ that boots onto Wi-Fi and starts SSH immediately.
 
+It also enables the onboard Raspberry Pi 3 Bluetooth controller and installs the BlueZ CLI tools.
+
 The Wi-Fi password is not stored in the Nix files. After flashing, put this file on the first FAT partition of the SD card:
 
 ```text
@@ -54,3 +56,25 @@ ssh root@THE_ROUTER_IP
 ```
 
 The image authorizes the public key from `/home/alex/.ssh/id_ed25519.pub`.
+
+Check Bluetooth after SSH:
+
+```sh
+systemctl status btattach bluetooth
+bluetoothctl list
+```
+
+Pair from SSH:
+
+```sh
+bluetoothctl
+power on
+agent on
+default-agent
+scan on
+pair XX:XX:XX:XX:XX:XX
+trust XX:XX:XX:XX:XX:XX
+connect XX:XX:XX:XX:XX:XX
+```
+
+This enables basic Bluetooth pairing/control. Bluetooth audio is intentionally not enabled in the rescue image; it needs PipeWire or PulseAudio and more packages.
