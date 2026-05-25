@@ -1,9 +1,12 @@
 .agents/
 .codex/
 .git/
+
+# Local OS/image artifacts kept out of the repo.
+dist/
 result
 result-*
-dist/
 *.img
 *.img.zst
-secrets/wifi-secrets.conf
+*.zip
+*.xz
