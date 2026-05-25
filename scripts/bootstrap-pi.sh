@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+assume_yes=0
+original_args=("$@")
+
+usage() {
+  cat <<'EOF'
+Usage: scripts/bootstrap-pi.sh [--yes]
+
+Installs and enables the small Raspberry Pi OS Lite service set used by Liquid:
+SSH, NetworkManager CLI/TUI, Avahi/mDNS, BlueZ, Raspberry Pi Bluetooth support,
+rfkill, and Wi-Fi diagnostics tools.
+
+Options:
+  --yes     Run without the confirmation prompt.
+  -h, --help
+            Show this help.
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --yes|-y)
+      assume_yes=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [ "$assume_yes" -eq 0 ] && [ ! -t 0 ]; then
+  echo "Refusing to run interactively without a terminal. Pass --yes after reviewing the script." >&2
+  exit 1
+fi
+
+if [ "$(id -u)" -ne 0 ]; then
+  if command -v sudo >/dev/null 2>&1; then
+    exec sudo bash "$0" "${original_args[@]}"
+  fi
+  echo "Run this script as root, or install sudo and run it as a sudo-capable user." >&2
+  exit 1
+fi
+
+if ! command -v apt-get >/dev/null 2>&1; then
+  echo "This bootstrap is intended for Raspberry Pi OS or another apt-based Debian system." >&2
+  exit 1
+fi
+
+run() {
+  printf '+'
+  printf ' %q' "$@"
+  printf '\n'
+  "$@"
+}
+
+confirm() {
+  if [ "$assume_yes" -eq 1 ]; then
+    return 0
+  fi
+
+  cat <<'EOF'
+This will:
+- update apt package metadata
+- install SSH, NetworkManager, Avahi, BlueZ, pi-bluetooth, rfkill, and iw
+- enable/start ssh, NetworkManager, avahi-daemon, bluetooth, and hciuart when present
+- unblock Wi-Fi and Bluetooth with rfkill
+
+It will not write Wi-Fi passwords or Bluetooth pairing secrets.
+EOF
+
+  printf 'Proceed? [y/N] '
+  read -r answer
+  case "$answer" in
+    y|Y|yes|YES)
+      ;;
+    *)
+      echo "Aborted."
+      exit 0
+      ;;
+  esac
+}
+
+enable_service_if_present() {
+  service="$1"
+  if systemctl list-unit-files "${service}.service" --no-legend 2>/dev/null \
+    | awk '{ print $1 }' \
+    | grep -qx "${service}.service"; then
+    run systemctl enable --now "$service"
+  else
+    echo "Skipping missing service: ${service}.service"
+  fi
+}
+
+confirm
+
+packages=(
+  avahi-daemon
+  bluez
+  iw
+  network-manager
+  openssh-server
+  pi-bluetooth
+  rfkill
+)
+
+run apt-get update
+run env DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}"
+
+enable_service_if_present ssh
+enable_service_if_present NetworkManager
+enable_service_if_present avahi-daemon
+enable_service_if_present bluetooth
+enable_service_if_present hciuart
+
+if command -v rfkill >/dev/null 2>&1; then
+  run rfkill unblock wifi
+  run rfkill unblock bluetooth
+fi
+
+cat <<'EOF'
+
+Bootstrap complete.
+
+Wi-Fi setup:
+  sudo nmtui
+  sudo raspi-config
+
+Bluetooth pairing:
+  bluetoothctl
+  power on
+  agent on
+  default-agent
+  scan on
+  pair XX:XX:XX:XX:XX:XX
+  trust XX:XX:XX:XX:XX:XX
+  connect XX:XX:XX:XX:XX:XX
+
+Diagnostics:
+  bash /tmp/pi-doctor.sh
+EOF

@@ -12,35 +12,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: cachix/install-nix-action@v31
-      - name: Evaluate Pi image
-        run: nix eval .#nixosConfigurations.pi3a.config.system.build.sdImage.drvPath
-      - name: Evaluate GUI Pi image
-        run: nix eval .#nixosConfigurations.pi3a-gui.config.system.build.sdImage.drvPath
-      - name: Verify ARM package outputs
+      - name: Check shell syntax
+        run: bash -n scripts/*.sh
+      - name: Run ShellCheck when available
         run: |
-          nix eval .#packages.aarch64-linux.pi3a-image.drvPath
-          nix eval .#packages.aarch64-linux.pi3a-gui-image.drvPath
-      - name: Verify SSH is enabled
-        run: test "$(nix eval .#nixosConfigurations.pi3a.config.services.openssh.enable)" = true
-      - name: Verify Bluetooth is enabled
-        run: test "$(nix eval .#nixosConfigurations.pi3a.config.hardware.bluetooth.enable)" = true
-      - name: Verify GUI is enabled
-        run: test "$(nix eval .#nixosConfigurations.pi3a-gui.config.services.xserver.enable)" = true
-      - name: Verify lightweight GUI is enabled
-        run: test "$(nix eval .#nixosConfigurations.pi3a-gui.config.services.xserver.windowManager.icewm.enable)" = true
-      - name: Verify GUI network panel is enabled
-        run: test "$(nix eval .#nixosConfigurations.pi3a-gui.config.networking.networkmanager.enable)" = true
-      - name: Verify GUI Bluetooth panel is enabled
-        run: test "$(nix eval .#nixosConfigurations.pi3a-gui.config.services.blueman.enable)" = true
-      - name: Verify GUI input support is enabled
-        run: test "$(nix eval .#nixosConfigurations.pi3a-gui.config.services.libinput.enable)" = true
-      - name: Verify Apple Bluetooth HID modules
-        run: |
-          modules="$(nix eval .#nixosConfigurations.pi3a.config.boot.kernelModules)"
-          printf '%s\n' "$modules" | grep -q hid_apple
-          printf '%s\n' "$modules" | grep -q hid_magicmouse
-          printf '%s\n' "$modules" | grep -q hidp
-          printf '%s\n' "$modules" | grep -q uhid
-      - name: Verify Pi Bluetooth attach service
-        run: nix eval .#nixosConfigurations.pi3a.config.systemd.services.btattach.serviceConfig.ExecStart | grep -q btattach
+          if command -v shellcheck >/dev/null 2>&1; then
+            shellcheck scripts/*.sh
+          else
+            echo "shellcheck not installed; skipping"
+          fi
