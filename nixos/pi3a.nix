@@ -24,6 +24,12 @@
 
   hardware.enableRedistributableFirmware = true;
   hardware.wirelessRegulatoryDatabase = true;
+  boot.kernelModules = [
+    "hid_apple"
+    "hid_magicmouse"
+    "hidp"
+    "uhid"
+  ];
   boot.zfs.forceImportRoot = false;
 
   networking.wireless = {

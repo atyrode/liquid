@@ -33,5 +33,14 @@ jobs:
         run: test "$(nix eval .#nixosConfigurations.pi3a-gui.config.networking.networkmanager.enable)" = true
       - name: Verify GUI Bluetooth panel is enabled
         run: test "$(nix eval .#nixosConfigurations.pi3a-gui.config.services.blueman.enable)" = true
+      - name: Verify GUI input support is enabled
+        run: test "$(nix eval .#nixosConfigurations.pi3a-gui.config.services.libinput.enable)" = true
+      - name: Verify Apple Bluetooth HID modules
+        run: |
+          modules="$(nix eval .#nixosConfigurations.pi3a.config.boot.kernelModules)"
+          printf '%s\n' "$modules" | grep -q hid_apple
+          printf '%s\n' "$modules" | grep -q hid_magicmouse
+          printf '%s\n' "$modules" | grep -q hidp
+          printf '%s\n' "$modules" | grep -q uhid
       - name: Verify Pi Bluetooth attach service
         run: nix eval .#nixosConfigurations.pi3a.config.systemd.services.btattach.serviceConfig.ExecStart | grep -q btattach

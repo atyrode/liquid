@@ -23,6 +23,7 @@
   security.sudo.wheelNeedsPassword = false;
 
   hardware.graphics.enable = true;
+  services.libinput.enable = true;
 
   networking.wireless = {
     enable = lib.mkForce false;
@@ -65,7 +66,9 @@
 
   environment.systemPackages = with pkgs; [
     blueman
+    libinput
     networkmanagerapplet
+    xinput
     xterm
     xrandr
     xset
