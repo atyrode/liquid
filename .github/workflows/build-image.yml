@@ -58,7 +58,7 @@ jobs:
           mkdir -p dist
           image_name="liquid-${IMAGE}-${suffix}.img.zst"
           cp "$image_path" "dist/$image_name"
-          sha256sum "dist/$image_name" > "dist/$image_name.sha256"
+          ( cd dist && sha256sum "$image_name" > "$image_name.sha256" )
           ls -lh dist
 
       - uses: actions/upload-artifact@v4
@@ -74,9 +74,24 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          mkdir -p release-dist
+          for asset in dist/*; do
+            name="$(basename "$asset")"
+            if [ "${name##*.}" = "zst" ] && [ "$(stat -c %s "$asset")" -gt 2000000000 ]; then
+              split -b 1900M -d -a 2 "$asset" "release-dist/$name.part-"
+              cat > "release-dist/$name.reassemble.txt" <<EOF
+          Reassemble on Linux:
+            cat $name.part-* > $name
+            sha256sum -c $name.sha256
+          EOF
+            else
+              cp "$asset" "release-dist/$name"
+            fi
+          done
+
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release create "$RELEASE_TAG" \
               --title "$RELEASE_TAG" \
               --notes "Automated Raspberry Pi image build for ${IMAGE} from ${GITHUB_SHA}."
           fi
-          gh release upload "$RELEASE_TAG" dist/* --clobber
+          gh release upload "$RELEASE_TAG" release-dist/* --clobber

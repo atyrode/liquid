@@ -3,9 +3,11 @@
 This builds 64-bit NixOS SD images for a Raspberry Pi 3 A+.
 
 - `pi3a-image` is the small headless rescue image. It boots onto Wi-Fi and starts SSH immediately.
-- `pi3a-gui-image` adds a local XFCE desktop for HDMI, mouse, and keyboard control.
+- `pi3a-gui-image` adds a lightweight local maintenance GUI for HDMI, mouse, keyboard, Wi-Fi setup, and Bluetooth setup.
 
-Both images enable the onboard Raspberry Pi 3 Bluetooth controller and install the BlueZ CLI tools. The GUI image also includes Blueman for graphical Bluetooth pairing.
+Both images enable the onboard Raspberry Pi 3 Bluetooth controller and install the BlueZ CLI tools.
+
+The headless image uses the `wifi-secrets.conf` workflow below so it can join Wi-Fi without a screen. The GUI image uses NetworkManager instead, so Wi-Fi can be selected on-screen with the network tray applet.
 
 The Wi-Fi password is not stored in the Nix files. After flashing, put this file on the first FAT partition of the SD card:
 
@@ -43,6 +45,14 @@ Then download from the release:
 
 ```sh
 gh release download pi3a-gui-2026-05-25 --repo atyrode/liquid --pattern '*.img.zst*' --dir dist
+```
+
+GitHub Release assets have a 2 GiB per-file limit. If the release contains `*.part-*` files, reassemble them before flashing:
+
+```sh
+cd dist
+cat liquid-pi3a-gui-image-pi3a-gui-2026-05-25.img.zst.part-* > liquid-pi3a-gui-image-pi3a-gui-2026-05-25.img.zst
+sha256sum -c liquid-pi3a-gui-image-pi3a-gui-2026-05-25.img.zst.sha256
 ```
 
 ## Local Build
@@ -96,13 +106,15 @@ ssh root@THE_ROUTER_IP
 
 The image authorizes the public key from `/home/alex/.ssh/id_ed25519.pub`.
 
-If you flashed the GUI image, plug in HDMI plus a USB mouse and keyboard before boot. It starts LightDM and logs into XFCE as `alex`. If the desktop does not start, the first local console also auto-logs in as `alex` so you can inspect logs from the keyboard:
+If you flashed the GUI image, plug in HDMI plus a USB mouse and keyboard before boot. It starts greeterless LightDM, logs in as `alex`, opens an IceWM session, and launches a terminal plus tray applets for Wi-Fi and Bluetooth. Use the NetworkManager tray applet to join Wi-Fi and the Blueman tray applet to pair Bluetooth devices.
+
+If the GUI does not start, the first local console also auto-logs in as `alex` so you can inspect logs from the keyboard:
 
 ```sh
 journalctl -b -u display-manager
 ```
 
-The GUI variant is expected to feel modest on a Pi 3 A+ because the board only has 512 MB RAM. It intentionally uses XFCE instead of GNOME or KDE and does not include a browser by default.
+The GUI variant is intentionally small because the board only has 512 MB RAM and this Pi is meant for installation/setup work, not as a desktop workstation. It does not include XFCE, GNOME, KDE, a browser, or a file manager. It does include graphical Wi-Fi and Bluetooth applets because those are useful for physical setup.
 
 Check Bluetooth after SSH:
 

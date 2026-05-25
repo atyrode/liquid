@@ -84,6 +84,7 @@
   documentation.man.enable = false;
 
   environment.systemPackages = with pkgs; [
+    bluez
     curl
     gitMinimal
     htop

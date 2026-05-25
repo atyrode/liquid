@@ -11,6 +11,7 @@
     extraGroups = [
       "audio"
       "input"
+      "networkmanager"
       "video"
       "wheel"
     ];
@@ -23,18 +24,32 @@
 
   hardware.graphics.enable = true;
 
+  networking.wireless = {
+    enable = lib.mkForce false;
+    networks = lib.mkForce { };
+  };
+  networking.networkmanager = {
+    enable = true;
+    wifi.backend = "wpa_supplicant";
+  };
+
   services.xserver = {
     enable = true;
     videoDrivers = [ "modesetting" ];
+    windowManager.icewm.enable = true;
 
-    desktopManager.xfce = {
-      enable = true;
-      enableScreensaver = false;
-    };
+    # The GUI image is a maintenance surface for local HDMI/USB access, not a
+    # desktop workstation. Autostart one terminal and keep the session small.
+    displayManager.sessionCommands = ''
+      ${pkgs.xsetroot}/bin/xsetroot -solid '#202020'
+      ( sleep 2; ${pkgs.networkmanagerapplet}/bin/nm-applet ) &
+      ( sleep 2; ${pkgs.blueman}/bin/blueman-applet ) &
+      ${pkgs.xterm}/bin/xterm -geometry 120x36+24+24 -fa monospace -fs 12 -title dogpi &
+    '';
 
     displayManager.lightdm = {
       enable = true;
-      greeters.gtk.enable = true;
+      greeter.enable = false;
     };
   };
 
@@ -49,7 +64,11 @@
   zramSwap.memoryPercent = lib.mkForce 75;
 
   environment.systemPackages = with pkgs; [
+    blueman
+    networkmanagerapplet
     xterm
-    xfce4-whiskermenu-plugin
+    xrandr
+    xset
+    xsetroot
   ];
 }

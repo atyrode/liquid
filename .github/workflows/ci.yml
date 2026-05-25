@@ -27,5 +27,11 @@ jobs:
         run: test "$(nix eval .#nixosConfigurations.pi3a.config.hardware.bluetooth.enable)" = true
       - name: Verify GUI is enabled
         run: test "$(nix eval .#nixosConfigurations.pi3a-gui.config.services.xserver.enable)" = true
+      - name: Verify lightweight GUI is enabled
+        run: test "$(nix eval .#nixosConfigurations.pi3a-gui.config.services.xserver.windowManager.icewm.enable)" = true
+      - name: Verify GUI network panel is enabled
+        run: test "$(nix eval .#nixosConfigurations.pi3a-gui.config.networking.networkmanager.enable)" = true
+      - name: Verify GUI Bluetooth panel is enabled
+        run: test "$(nix eval .#nixosConfigurations.pi3a-gui.config.services.blueman.enable)" = true
       - name: Verify Pi Bluetooth attach service
         run: nix eval .#nixosConfigurations.pi3a.config.systemd.services.btattach.serviceConfig.ExecStart | grep -q btattach
