@@ -3,6 +3,7 @@
 .git/
 result
 result-*
+dist/
 *.img
 *.img.zst
 secrets/wifi-secrets.conf

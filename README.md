@@ -38,22 +38,22 @@ If no release tag is set, download the image from the workflow run artifact. If 
 Using `gh`:
 
 ```sh
-gh workflow run build-image.yml --repo atyrode/liquid -f image=pi3a-gui-image -f release_tag=pi3a-gui-2026-05-25
+gh workflow run build-image.yml --repo atyrode/liquid -f image=pi3a-gui-image -f release_tag=pi3a-gui-lite-$(date +%F)
 ```
 
-Then download from the release:
+Then download from the latest release, reassemble split parts if needed, and verify the checksum:
 
 ```sh
-gh release download pi3a-gui-2026-05-25 --repo atyrode/liquid --pattern '*.img.zst*' --dir dist
+scripts/download-image.sh
 ```
 
-GitHub Release assets have a 2 GiB per-file limit. If the release contains `*.part-*` files, reassemble them before flashing:
+To download a specific release instead of the latest:
 
 ```sh
-cd dist
-cat liquid-pi3a-gui-image-pi3a-gui-2026-05-25.img.zst.part-* > liquid-pi3a-gui-image-pi3a-gui-2026-05-25.img.zst
-sha256sum -c liquid-pi3a-gui-image-pi3a-gui-2026-05-25.img.zst.sha256
+scripts/download-image.sh --tag pi3a-gui-lite-2026-05-25
 ```
+
+GitHub Release assets have a 2 GiB per-file limit, so large images may be published as `*.part-*` files. The download script handles that automatically.
 
 ## Local Build
 
@@ -87,6 +87,13 @@ Flash, replacing `/dev/sdX` with the whole SD card device, not a partition:
 
 ```sh
 zstd -dc result/sd-image/*.img.zst | sudo dd of=/dev/sdX bs=4M conv=fsync status=progress
+sync
+```
+
+If you downloaded a release image with `scripts/download-image.sh`, flash that file instead:
+
+```sh
+zstd -dc dist/*.img.zst | sudo dd of=/dev/sdX bs=4M conv=fsync status=progress
 sync
 ```
 
