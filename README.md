@@ -41,7 +41,7 @@ Using `gh`:
 gh workflow run build-image.yml --repo atyrode/liquid -f image=pi3a-gui-image -f release_tag=pi3a-gui-lite-$(date +%F)
 ```
 
-Then download from the latest release, reassemble split parts if needed, and verify the checksum:
+Then download from the latest public release, reassemble split parts if needed, and verify the checksum. This does not require `gh` or GitHub authentication:
 
 ```sh
 scripts/download-image.sh
