@@ -1,6 +1,15 @@
 name: Build image
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/build-image.yml
+      - firmware/**
+      - flake.lock
+      - flake.nix
+      - nixos/**
   workflow_dispatch:
     inputs:
       image:
@@ -21,12 +30,12 @@ permissions:
 
 jobs:
   build:
-    name: build ${{ inputs.image }}
+    name: build ${{ github.event_name == 'workflow_dispatch' && inputs.image || 'pi3a-gui-image' }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 180
     env:
-      IMAGE: ${{ inputs.image }}
-      RELEASE_TAG: ${{ inputs.release_tag }}
+      IMAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.image || 'pi3a-gui-image' }}
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -50,9 +59,27 @@ jobs:
           test -n "$image_path"
 
           short_sha="$(git rev-parse --short HEAD)"
+          release_tag="$RELEASE_TAG"
+          if [ -z "$release_tag" ] && [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            case "$IMAGE" in
+              pi3a-gui-image)
+                release_prefix="pi3a-gui-lite"
+                ;;
+              pi3a-image)
+                release_prefix="pi3a-headless"
+                ;;
+              *)
+                release_prefix="$IMAGE"
+                ;;
+            esac
+            release_tag="$release_prefix-$(date -u +%Y-%m-%d)-$short_sha"
+          fi
+          release_tag="${release_tag//\//-}"
+          printf 'RELEASE_TAG=%s\n' "$release_tag" >> "$GITHUB_ENV"
+
           suffix="$short_sha"
-          if [ -n "$RELEASE_TAG" ]; then
-            suffix="${RELEASE_TAG//\//-}"
+          if [ -n "$release_tag" ]; then
+            suffix="$release_tag"
           fi
 
           mkdir -p dist
@@ -69,7 +96,7 @@ jobs:
           retention-days: 14
 
       - name: Upload release assets
-        if: ${{ inputs.release_tag != '' }}
+        if: ${{ github.event_name == 'push' || inputs.release_tag != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
