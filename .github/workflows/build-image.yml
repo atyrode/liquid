@@ -1,0 +1,82 @@
+name: Build image
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: Image package to build
+        required: true
+        default: pi3a-gui-image
+        type: choice
+        options:
+          - pi3a-gui-image
+          - pi3a-image
+      release_tag:
+        description: Optional release tag, for example pi3a-gui-2026-05-25
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build ${{ inputs.image }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    env:
+      IMAGE: ${{ inputs.image }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc "$AGENT_TOOLSDIRECTORY"
+          df -h
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            max-jobs = auto
+            cores = 0
+
+      - name: Build image
+        run: |
+          set -euo pipefail
+          nix build ".#${IMAGE}" --print-build-logs
+
+          image_path="$(find -L result/sd-image -type f -name '*.img.zst' -print -quit)"
+          test -n "$image_path"
+
+          short_sha="$(git rev-parse --short HEAD)"
+          suffix="$short_sha"
+          if [ -n "$RELEASE_TAG" ]; then
+            suffix="${RELEASE_TAG//\//-}"
+          fi
+
+          mkdir -p dist
+          image_name="liquid-${IMAGE}-${suffix}.img.zst"
+          cp "$image_path" "dist/$image_name"
+          sha256sum "dist/$image_name" > "dist/$image_name.sha256"
+          ls -lh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liquid-${{ inputs.image }}-${{ github.run_number }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload release assets
+        if: ${{ inputs.release_tag != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --title "$RELEASE_TAG" \
+              --notes "Automated Raspberry Pi image build for ${IMAGE} from ${GITHUB_SHA}."
+          fi
+          gh release upload "$RELEASE_TAG" dist/* --clobber

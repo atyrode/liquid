@@ -19,39 +19,57 @@ with this content:
 psk_livebox=your-wifi-password
 ```
 
-Recommended headless build if you are on a Raspberry Pi/aarch64 machine, or on x86_64 with QEMU binfmt enabled:
+## Build On GitHub
+
+Use the GitHub workflow when building from an x86_64 machine. The normal image is an ARM64 NixOS system, so local x86_64 builds either need emulation or a slow cross build.
+
+From the GitHub UI:
+
+1. Open **Actions**.
+2. Select **Build image**.
+3. Click **Run workflow**.
+4. Choose `pi3a-gui-image` or `pi3a-image`.
+5. Optionally set a release tag such as `pi3a-gui-2026-05-25`.
+
+If no release tag is set, download the image from the workflow run artifact. If a release tag is set, download it from the repository release assets.
+
+Using `gh`:
+
+```sh
+gh workflow run build-image.yml --repo atyrode/liquid -f image=pi3a-gui-image -f release_tag=pi3a-gui-2026-05-25
+```
+
+Then download from the release:
+
+```sh
+gh release download pi3a-gui-2026-05-25 --repo atyrode/liquid --pattern '*.img.zst*' --dir dist
+```
+
+## Local Build
+
+Recommended local headless build if you are on a Raspberry Pi/aarch64 machine:
 
 ```sh
 nix build path:$PWD#pi3a-image
 ```
 
-Build the GUI image instead when you want HDMI, mouse, and keyboard:
+Build the GUI image on a Raspberry Pi/aarch64 machine when you want HDMI, mouse, and keyboard:
 
 ```sh
 nix build path:$PWD#pi3a-gui-image
 ```
 
-If this x86_64 machine has QEMU binfmt registered but Nix still refuses `aarch64-linux`, use:
+On x86_64, these package names resolve to the explicit cross outputs:
 
 ```sh
-nix build path:$PWD#pi3a-image --option extra-platforms aarch64-linux
+nix build path:$PWD#pi3a-image
+nix build path:$PWD#pi3a-gui-image
 ```
 
-For the GUI image with the same workaround:
-
-```sh
-nix build path:$PWD#pi3a-gui-image --option extra-platforms aarch64-linux
-```
-
-There is also a pure x86_64 cross output, but it can compile a lot from source and is not the fast path:
+The explicit cross output names are also available, but they can compile a lot from source and are not the fast path:
 
 ```sh
 nix build path:$PWD#pi3a-image-cross
-```
-
-The GUI cross output is:
-
-```sh
 nix build path:$PWD#pi3a-gui-image-cross
 ```
 

@@ -17,6 +17,10 @@ jobs:
         run: nix eval .#nixosConfigurations.pi3a.config.system.build.sdImage.drvPath
       - name: Evaluate GUI Pi image
         run: nix eval .#nixosConfigurations.pi3a-gui.config.system.build.sdImage.drvPath
+      - name: Verify ARM package outputs
+        run: |
+          nix eval .#packages.aarch64-linux.pi3a-image.drvPath
+          nix eval .#packages.aarch64-linux.pi3a-gui-image.drvPath
       - name: Verify SSH is enabled
         run: test "$(nix eval .#nixosConfigurations.pi3a.config.services.openssh.enable)" = true
       - name: Verify Bluetooth is enabled

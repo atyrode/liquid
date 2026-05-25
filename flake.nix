@@ -42,12 +42,18 @@
         ];
       };
 
-      packages.x86_64-linux.pi3a-image =
+      packages.aarch64-linux.pi3a-image =
         self.nixosConfigurations.pi3a.config.system.build.sdImage;
+      packages.aarch64-linux.pi3a-gui-image =
+        self.nixosConfigurations.pi3a-gui.config.system.build.sdImage;
+      packages.aarch64-linux.default = self.packages.aarch64-linux.pi3a-image;
+
+      packages.x86_64-linux.pi3a-image =
+        self.nixosConfigurations.pi3a-cross.config.system.build.sdImage;
       packages.x86_64-linux.pi3a-image-cross =
         self.nixosConfigurations.pi3a-cross.config.system.build.sdImage;
       packages.x86_64-linux.pi3a-gui-image =
-        self.nixosConfigurations.pi3a-gui.config.system.build.sdImage;
+        self.nixosConfigurations.pi3a-gui-cross.config.system.build.sdImage;
       packages.x86_64-linux.pi3a-gui-image-cross =
         self.nixosConfigurations.pi3a-gui-cross.config.system.build.sdImage;
       packages.x86_64-linux.default = self.packages.x86_64-linux.pi3a-image;
