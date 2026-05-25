@@ -1,0 +1,19 @@
+device:
+  layer: rpi3
+  hostname: dogpi
+  user1: liquid
+  user1sudo: nopasswd
+
+image:
+  layer: image-rpios
+  boot_part_size: 200%
+  root_part_size: 300%
+  name: liquid-rpi3-lite
+  compression: zstd
+
+layer:
+  base: trixie-minbase
+  liquid: liquid-headless-kit
+
+ssh:
+  pubkey_only: n

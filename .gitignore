@@ -4,9 +4,12 @@
 
 # Local OS/image artifacts kept out of the repo.
 dist/
+.image-build/
 result
 result-*
+work/
 *.img
 *.img.zst
+*.img.xz
 *.zip
 *.xz
