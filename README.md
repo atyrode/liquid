@@ -80,18 +80,24 @@ scripts/download-image.sh
 The script downloads the latest `liquid-rpi3-lite` image, reassembles split
 release assets when needed, and verifies the published SHA256 checksum.
 
-Flash with Raspberry Pi Imager by choosing **Use Custom**, or flash from a Unix
-shell. On macOS, replace `/dev/diskN` with the whole SD card device:
+Flash with Raspberry Pi Imager by choosing **Use Custom**, or flash from a
+macOS terminal.
+
+List external disks:
 
 ```sh
-DISK=/dev/diskN
-IMAGE=dist/liquid-rpi3-lite-*.img.zst
-
-diskutil unmountDisk "$DISK"
-zstd -dc $IMAGE | sudo dd of="/dev/r${DISK#/dev/}" bs=4m
-sync
-diskutil eject "$DISK"
+scripts/flash-sd-card-macos.sh --list
 ```
+
+Then flash the whole SD card disk, not a partition:
+
+```sh
+scripts/flash-sd-card-macos.sh --disk /dev/diskN
+```
+
+The flashing script destroys the selected disk. It refuses internal disks when
+macOS reports them as internal, shows the target disk, and asks you to type the
+disk id before writing. It requires `zstd` for `.img.zst` images.
 
 ## Bluetooth
 
