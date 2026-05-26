@@ -4,7 +4,13 @@
 # Nix/Home Manager rebuild logic is intentionally replaced by a local zconf
 # shell reload helper because this image is not Nix-managed.
 
-_liquid_shell_dir="${LIQUID_SHELL_DIR:-$HOME/.liquid-shell.d}"
+if [[ -n "${LIQUID_SHELL_DIR:-}" ]]; then
+  _liquid_shell_dir="$LIQUID_SHELL_DIR"
+elif [[ -d "$HOME/liquid/image/files/home/artist/.liquid-shell.d" ]]; then
+  _liquid_shell_dir="$HOME/liquid/image/files/home/artist/.liquid-shell.d"
+else
+  _liquid_shell_dir="$HOME/.liquid-shell.d"
+fi
 
 for _liquid_shell_module in \
   colors \

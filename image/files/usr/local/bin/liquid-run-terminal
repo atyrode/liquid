@@ -19,8 +19,22 @@ fi
 
 cd "$code_dir"
 
-args=(
-  --auto-size
+args=()
+
+case "${LIQUID_AUTO_SIZE:-1}" in
+  1|true|yes|on)
+    args+=(--auto-size)
+    ;;
+  0|false|no|off)
+    args+=(--fixed-size --cols "${LIQUID_COLS:-100}" --rows "${LIQUID_ROWS:-50}")
+    ;;
+  *)
+    echo "Invalid LIQUID_AUTO_SIZE value: ${LIQUID_AUTO_SIZE}" >&2
+    exit 2
+    ;;
+esac
+
+args+=(
   --particles "${LIQUID_PARTICLES:-500}"
   --fps "${LIQUID_FPS:-20}"
   --color "${LIQUID_COLOR:-deep-blue}"

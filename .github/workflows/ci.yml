@@ -20,10 +20,12 @@ jobs:
           bash -n image/files/home/artist/liquid-control/bluetooth
           bash -n image/files/home/artist/liquid-control/config
           bash -n image/files/home/artist/liquid-control/doctor
+          bash -n image/files/home/artist/liquid-control/restart
           bash -n image/files/home/artist/liquid-control/start
           bash -n image/files/home/artist/liquid-control/stop
           bash -n image/files/home/artist/liquid-control/update
           bash -n image/files/usr/local/bin/liquid-bluetooth-keyboard
+          bash -n image/files/usr/local/bin/liquid-restart
           bash -n image/files/usr/local/bin/liquid-run-terminal
           bash -n image/files/usr/local/bin/liquid-start
           bash -n image/files/usr/local/bin/liquid-update
@@ -52,10 +54,12 @@ jobs:
             shellcheck image/files/home/artist/liquid-control/bluetooth
             shellcheck image/files/home/artist/liquid-control/config
             shellcheck image/files/home/artist/liquid-control/doctor
+            shellcheck image/files/home/artist/liquid-control/restart
             shellcheck image/files/home/artist/liquid-control/start
             shellcheck image/files/home/artist/liquid-control/stop
             shellcheck image/files/home/artist/liquid-control/update
             shellcheck image/files/usr/local/bin/liquid-bluetooth-keyboard
+            shellcheck image/files/usr/local/bin/liquid-restart
             shellcheck image/files/usr/local/bin/liquid-run-terminal
             shellcheck image/files/usr/local/bin/liquid-start
             shellcheck image/files/usr/local/bin/liquid-update
