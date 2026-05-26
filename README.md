@@ -10,7 +10,15 @@ The image is intentionally headless:
 - SSH, Wi-Fi tools, Bluetooth tools, Avahi/mDNS, and diagnostics included
 - the Liquid repo is baked into `/home/artist/liquid`
 - the terminal renderer starts detached in tmux
-- editable control scripts are baked into `/home/artist/liquid-control`
+- repo-owned control scripts are exposed through `/home/artist/liquid-control`
+- local renderer settings live in `/home/artist/liquid-control/settings.env`
+
+## Documentation
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): Pi image, runtime commands,
+  control scripts, and renderer source layout.
+- [docs/DEVELOPMENT_STEPS.md](docs/DEVELOPMENT_STEPS.md): current milestones,
+  validation checkpoints, and next operator steps.
 
 ## What Is Baked In
 
@@ -32,7 +40,8 @@ The custom image includes:
 - Python basics: `python3`, `python3-venv`, `python3-pip`, `python3-pil`
 - a Git checkout of `github.com/atyrode/liquid`
 - a prebuilt terminal renderer from `code/examples/terminal.rs`
-- editable control scripts under `~/liquid-control`
+- repo-owned control scripts under `~/liquid-control`
+- local renderer defaults in `~/liquid-control/settings.env`
 - `liquid-bootstrap`
 - `liquid-doctor`
 - `liquid-grow-rootfs`
@@ -47,6 +56,28 @@ The `ls` alias uses `tree -L 1 --noreport --charset utf-8` by default so the
 directory connectors stay as line-drawing characters even if the first login
 environment has a conservative locale. Set `TREE_CHARSET=ascii` to opt back into
 plain ASCII connectors.
+
+When the repo checkout exists at `~/liquid`, the shell loader prefers shell
+modules from `~/liquid/image/files/home/artist/.liquid-shell.d`. That lets
+normal repo updates change aliases and helpers without reflashing. On older
+flashes that still load the copied home modules directly, run this once after
+pulling:
+
+```sh
+~/liquid/scripts/sync-pi-shell-loader.sh
+zconf
+```
+
+The same repo-update model is used for the control scripts. New images link
+`~/liquid-control/start`, `restart`, `stop`, `attach`, `config`, `update`,
+`doctor`, and `bluetooth` back to the baked repo checkout while keeping
+`~/liquid-control/settings.env` local. On older flashes, switch to that model
+after pulling with:
+
+```sh
+~/liquid/scripts/sync-pi-runtime.sh
+zconf
+```
 
 The image does not include Wi-Fi credentials, SSH private keys, Bluetooth pairing
 secrets, or a desktop environment.
@@ -80,7 +111,7 @@ detached in a tmux session named `liquid` using the baked repo checkout at:
 /home/artist/liquid
 ```
 
-The editable control scripts live at:
+The repo-owned control scripts and local settings live at:
 
 ```text
 /home/artist/liquid-control
@@ -99,11 +130,27 @@ Start or stop it manually if needed:
 ~/liquid-control/stop
 ```
 
+Restart it after changing renderer settings:
+
+```sh
+~/liquid-control/restart
+```
+
 Tune renderer defaults:
 
 ```sh
 ~/liquid-control/config
 ```
+
+Or open the renderer's interactive setup screen:
+
+```sh
+liquid-run-terminal --setup
+```
+
+The setup screen starts immediately if you press Enter. Move through values with
+the arrow keys, use left/right to adjust them, and choose `Save + start` to write
+`~/liquid-control/settings.env` before launching.
 
 The image does not automatically pull from GitHub on boot. That keeps an
 installation from changing behavior just because the network is available.
@@ -112,6 +159,19 @@ Update intentionally after Wi-Fi is connected:
 ```sh
 ~/liquid-control/update
 ```
+
+On an already-flashed Pi, pull new repo-owned runtime scripts without reflashing:
+
+```sh
+cd ~/liquid
+git pull --ff-only
+~/liquid/scripts/sync-pi-runtime.sh
+zconf
+```
+
+That sync updates `/usr/local/bin/liquid-*`, links the command wrappers in
+`~/liquid-control` back to the repo, and preserves
+`~/liquid-control/settings.env`.
 
 There is no baked password. Set your own password locally before relying on SSH
 password login:
@@ -279,10 +339,12 @@ bash -n image/files/home/artist/liquid-control/attach
 bash -n image/files/home/artist/liquid-control/bluetooth
 bash -n image/files/home/artist/liquid-control/config
 bash -n image/files/home/artist/liquid-control/doctor
+bash -n image/files/home/artist/liquid-control/restart
 bash -n image/files/home/artist/liquid-control/start
 bash -n image/files/home/artist/liquid-control/stop
 bash -n image/files/home/artist/liquid-control/update
 bash -n image/files/usr/local/bin/liquid-bluetooth-keyboard
+bash -n image/files/usr/local/bin/liquid-restart
 bash -n image/files/usr/local/bin/liquid-run-terminal
 bash -n image/files/usr/local/bin/liquid-start
 bash -n image/files/usr/local/bin/liquid-update
@@ -293,7 +355,7 @@ zsh -n image/files/home/artist/.zshrc image/files/home/artist/.liquid-shell.zsh 
 cmp scripts/bootstrap-pi.sh image/files/usr/local/sbin/liquid-bootstrap
 cmp scripts/pi-doctor.sh image/files/usr/local/sbin/liquid-doctor
 cargo check --manifest-path code/Cargo.toml --no-default-features --example terminal
-shellcheck scripts/*.sh image/pre-image.sh image/files/home/artist/liquid-control/attach image/files/home/artist/liquid-control/bluetooth image/files/home/artist/liquid-control/config image/files/home/artist/liquid-control/doctor image/files/home/artist/liquid-control/start image/files/home/artist/liquid-control/stop image/files/home/artist/liquid-control/update image/files/usr/local/bin/liquid-* image/files/usr/local/sbin/liquid-*
+shellcheck scripts/*.sh image/pre-image.sh image/files/home/artist/liquid-control/attach image/files/home/artist/liquid-control/bluetooth image/files/home/artist/liquid-control/config image/files/home/artist/liquid-control/doctor image/files/home/artist/liquid-control/restart image/files/home/artist/liquid-control/start image/files/home/artist/liquid-control/stop image/files/home/artist/liquid-control/update image/files/usr/local/bin/liquid-* image/files/usr/local/sbin/liquid-*
 ```
 
 `shellcheck` is optional locally, but CI runs it when available.
@@ -315,6 +377,12 @@ Adjust the rotating gravity speed with `--gravity-spin`:
 
 ```sh
 cargo run --release --no-default-features --example terminal -- --auto-size --gravity-spin 3
+```
+
+Open the setup screen explicitly:
+
+```sh
+cargo run --release --no-default-features --example terminal -- --setup
 ```
 
 For a bounded smoke test that exits on its own:

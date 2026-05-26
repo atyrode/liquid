@@ -1,7 +1,5 @@
-mod particle;
-
 #[cfg(feature = "window")]
-use particle::Particles;
+use fluid_sim::particle::Particles;
 
 #[cfg(feature = "window")]
 use minifb::{Key, Window, WindowOptions};

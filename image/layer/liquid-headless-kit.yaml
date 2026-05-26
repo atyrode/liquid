@@ -93,6 +93,7 @@ mmdebstrap:
     - install -Dm0755 "$IGconf_liquid_assets/usr/local/sbin/liquid-doctor" "$1/usr/local/sbin/liquid-doctor"
     - install -Dm0755 "$IGconf_liquid_assets/usr/local/sbin/liquid-grow-rootfs" "$1/usr/local/sbin/liquid-grow-rootfs"
     - install -Dm0755 "$IGconf_liquid_assets/usr/local/bin/liquid-bluetooth-keyboard" "$1/usr/local/bin/liquid-bluetooth-keyboard"
+    - install -Dm0755 "$IGconf_liquid_assets/usr/local/bin/liquid-restart" "$1/usr/local/bin/liquid-restart"
     - install -Dm0755 "$IGconf_liquid_assets/usr/local/bin/liquid-run-terminal" "$1/usr/local/bin/liquid-run-terminal"
     - install -Dm0755 "$IGconf_liquid_assets/usr/local/bin/liquid-start" "$1/usr/local/bin/liquid-start"
     - install -Dm0755 "$IGconf_liquid_assets/usr/local/bin/liquid-update" "$1/usr/local/bin/liquid-update"
@@ -113,6 +114,7 @@ mmdebstrap:
     - install -Dm0755 "$IGconf_liquid_assets/home/artist/liquid-control/start" "$1/home/$IGconf_device_user1/liquid-control/start"
     - install -Dm0755 "$IGconf_liquid_assets/home/artist/liquid-control/attach" "$1/home/$IGconf_device_user1/liquid-control/attach"
     - install -Dm0755 "$IGconf_liquid_assets/home/artist/liquid-control/stop" "$1/home/$IGconf_device_user1/liquid-control/stop"
+    - install -Dm0755 "$IGconf_liquid_assets/home/artist/liquid-control/restart" "$1/home/$IGconf_device_user1/liquid-control/restart"
     - install -Dm0755 "$IGconf_liquid_assets/home/artist/liquid-control/update" "$1/home/$IGconf_device_user1/liquid-control/update"
     - install -Dm0755 "$IGconf_liquid_assets/home/artist/liquid-control/doctor" "$1/home/$IGconf_device_user1/liquid-control/doctor"
     - install -Dm0755 "$IGconf_liquid_assets/home/artist/liquid-control/config" "$1/home/$IGconf_device_user1/liquid-control/config"
@@ -189,6 +191,14 @@ mmdebstrap:
         if [ -f "$repo_dir/code/Cargo.toml" ]; then
           uchroot "$1" 'cd "$HOME/liquid/code" && cargo build --release --no-default-features --example terminal'
         fi
+        for name in README.md attach bluetooth config doctor restart start stop update; do
+          src="$1/home/$IGconf_device_user1/liquid/image/files/home/artist/liquid-control/$name"
+          dest="$1/home/$IGconf_device_user1/liquid-control/$name"
+          if [ -e "$src" ]; then
+            rm -f "$dest"
+            ln -s "../liquid/image/files/home/artist/liquid-control/$name" "$dest"
+          fi
+        done
       fi
     - |-
       if chroot "$1" id "$IGconf_device_user1" >/dev/null 2>&1; then
@@ -213,10 +223,11 @@ mmdebstrap:
 
       Runtime:
         ~/liquid contains the baked Git checkout.
-        ~/liquid-control contains editable control scripts.
+        ~/liquid-control contains repo-linked control scripts and local settings.
         The renderer starts detached in tmux session: liquid.
         Attach with: ~/liquid-control/attach
         Tune defaults with: ~/liquid-control/config
+        Restart after config changes with: ~/liquid-control/restart
 
       Bluetooth:
         ~/liquid-control/bluetooth

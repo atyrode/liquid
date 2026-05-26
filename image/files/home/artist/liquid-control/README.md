@@ -5,6 +5,7 @@ This folder contains the editable control scripts for the installation runtime.
 - `./start`: create the detached renderer tmux session.
 - `./attach`: attach to the renderer tmux session.
 - `./stop`: stop the renderer tmux session.
+- `./restart`: restart the renderer tmux session after config changes.
 - `./doctor`: run diagnostics.
 - `./update`: intentionally pull and rebuild the baked repo checkout.
 - `./config`: edit renderer defaults.

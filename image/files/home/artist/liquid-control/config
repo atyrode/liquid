@@ -8,4 +8,12 @@ if ! command -v "$editor" >/dev/null 2>&1; then
   editor="vi"
 fi
 
-exec "$editor" "$config_file"
+"$editor" "$config_file"
+
+cat <<'EOF'
+
+Renderer settings saved.
+Apply them to the tmux renderer with:
+
+  ~/liquid-control/restart
+EOF

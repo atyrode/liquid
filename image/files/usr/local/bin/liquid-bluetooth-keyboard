@@ -22,6 +22,24 @@ cleanup() {
   bluetoothctl scan off >/dev/null 2>&1 || true
 }
 
+bluetoothctl_checked() {
+  local output
+  if ! output="$(bluetoothctl "$@" 2>&1)"; then
+    cat >&2 <<EOF
+Bluetooth command failed: bluetoothctl $*
+
+$output
+
+Try:
+  ~/liquid-control/doctor
+  sudo systemctl status bluetooth hciuart --no-pager
+  bluetoothctl list
+EOF
+    exit 1
+  fi
+  printf '%s\n' "$output"
+}
+
 need_command bluetoothctl
 need_command dialog
 trap cleanup EXIT
@@ -37,9 +55,21 @@ if command -v rfkill >/dev/null 2>&1; then
   run_sudo rfkill unblock bluetooth >/dev/null 2>&1 || true
 fi
 
-bluetoothctl power on >/dev/null
-bluetoothctl agent on >/dev/null
-bluetoothctl default-agent >/dev/null
+if ! bluetoothctl list | grep -q '^Controller '; then
+  cat >&2 <<'EOF'
+No Bluetooth controller is visible to bluetoothctl.
+
+Try:
+  ~/liquid-control/doctor
+  sudo systemctl restart hciuart bluetooth
+  bluetoothctl list
+EOF
+  exit 1
+fi
+
+bluetoothctl_checked power on >/dev/null
+bluetoothctl_checked agent on >/dev/null
+bluetoothctl_checked default-agent >/dev/null
 
 dialog --title "Bluetooth Keyboard" \
   --msgbox "Put the keyboard in pairing mode, then press Enter to scan." 8 60
@@ -96,9 +126,9 @@ Pairing $selected
 If a passkey appears, type it on the Bluetooth keyboard and press Enter.
 EOF
 
-bluetoothctl pair "$selected"
-bluetoothctl trust "$selected"
-bluetoothctl connect "$selected"
+bluetoothctl_checked pair "$selected"
+bluetoothctl_checked trust "$selected"
+bluetoothctl_checked connect "$selected"
 
 dialog --title "Bluetooth Keyboard" \
   --msgbox "Bluetooth device $selected is paired, trusted, and connected." 7 60
