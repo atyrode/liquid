@@ -135,6 +135,8 @@ The `Build image` workflow builds and publishes the image on pushes to `main`
 that change `image/**`, the Pi scripts, or the workflow itself.
 
 The workflow pins `rpi-image-gen` to `v2.6.0` for reproducible builds.
+CI caches that pinned `rpi-image-gen` checkout between runs; it does not cache
+generated image work directories or release assets.
 
 Run it manually from GitHub Actions when needed. Optionally provide a release tag
 such as:

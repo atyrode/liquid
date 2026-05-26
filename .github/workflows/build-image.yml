@@ -31,12 +31,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache rpi-image-gen checkout
+        uses: actions/cache@v4
+        with:
+          path: /tmp/rpi-image-gen
+          key: rpi-image-gen-${{ runner.os }}-${{ runner.arch }}-${{ env.RPI_IMAGE_GEN_REF }}
+
       - name: Install rpi-image-gen
         run: |
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends git zstd xz-utils
-          git clone --depth 1 --branch "$RPI_IMAGE_GEN_REF" https://github.com/raspberrypi/rpi-image-gen.git /tmp/rpi-image-gen
+          if [ ! -x /tmp/rpi-image-gen/rpi-image-gen ]; then
+            rm -rf /tmp/rpi-image-gen
+            git clone --depth 1 --branch "$RPI_IMAGE_GEN_REF" https://github.com/raspberrypi/rpi-image-gen.git /tmp/rpi-image-gen
+          fi
           cd /tmp/rpi-image-gen
           sudo ./install_deps.sh
 
