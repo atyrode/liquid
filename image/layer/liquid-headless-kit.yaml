@@ -16,22 +16,74 @@
 # X-Env-Var-assets-Required: n
 # X-Env-Var-assets-Valid: string
 # X-Env-Var-assets-Set: y
+#
+# X-Env-Var-repo_url: https://github.com/atyrode/liquid.git
+# X-Env-Var-repo_url-Desc: Git repository cloned into the Pi image.
+# X-Env-Var-repo_url-Required: n
+# X-Env-Var-repo_url-Valid: string
+# X-Env-Var-repo_url-Set: y
+#
+# X-Env-Var-repo_ref: main
+# X-Env-Var-repo_ref-Desc: Git ref checked out in the baked repo copy.
+# X-Env-Var-repo_ref-Required: n
+# X-Env-Var-repo_ref-Valid: string
+# X-Env-Var-repo_ref-Set: y
+#
+# X-Env-Var-runtime_branch: main
+# X-Env-Var-runtime_branch-Desc: Local branch name configured in the baked repo.
+# X-Env-Var-runtime_branch-Required: n
+# X-Env-Var-runtime_branch-Valid: string
+# X-Env-Var-runtime_branch-Set: y
 # METAEND
 ---
 mmdebstrap:
   packages:
     - avahi-daemon
+    - bat
     - bluez
+    - btop
+    - build-essential
+    - ca-certificates
+    - cargo
+    - curl
+    - fd-find
+    - fastfetch
+    - fzf
+    - gh
+    - git
     - iw
     - network-manager
+    - openssh-server
+    - pkg-config
     - pi-bluetooth
+    - python3
+    - python3-pil
+    - python3-pip
+    - python3-venv
     - raspi-config
     - rfkill
+    - ripgrep
+    - rust-clippy
+    - rustc
+    - rustfmt
     - sudo
+    - tmux
+    - tree
     - wpasupplicant
+    - zoxide
+    - zsh
+    - zsh-autosuggestions
+    - zsh-syntax-highlighting
   customize-hooks:
     - install -Dm0755 "$IGconf_liquid_assets/usr/local/sbin/liquid-bootstrap" "$1/usr/local/sbin/liquid-bootstrap"
     - install -Dm0755 "$IGconf_liquid_assets/usr/local/sbin/liquid-doctor" "$1/usr/local/sbin/liquid-doctor"
+    - install -Dm0755 "$IGconf_liquid_assets/usr/local/sbin/liquid-grow-rootfs" "$1/usr/local/sbin/liquid-grow-rootfs"
+    - install -Dm0755 "$IGconf_liquid_assets/usr/local/bin/liquid-run-terminal" "$1/usr/local/bin/liquid-run-terminal"
+    - install -Dm0755 "$IGconf_liquid_assets/usr/local/bin/liquid-start" "$1/usr/local/bin/liquid-start"
+    - install -Dm0755 "$IGconf_liquid_assets/usr/local/bin/liquid-update" "$1/usr/local/bin/liquid-update"
+    - install -Dm0644 "$IGconf_liquid_assets/etc/profile.d/liquid-dev-tools.sh" "$1/etc/profile.d/liquid-dev-tools.sh"
+    - install -Dm0644 "$IGconf_liquid_assets/home/liquid/.bashrc" "$1/home/$IGconf_device_user1/.bashrc"
+    - install -Dm0644 "$IGconf_liquid_assets/home/liquid/.zshrc" "$1/home/$IGconf_device_user1/.zshrc"
     - install -d "$1/etc/NetworkManager/conf.d"
     - install -d "$1/etc/systemd/system/getty@tty1.service.d"
     - |-
@@ -40,20 +92,65 @@ mmdebstrap:
       wifi.backend=wpa_supplicant
       EOF
     - |-
+      cat > "$1/etc/systemd/system/liquid-grow-rootfs.service" <<'EOF'
+      [Unit]
+      Description=Expand Liquid root filesystem on first boot
+      ConditionPathExists=!/var/lib/liquid/rootfs-expanded
+      After=local-fs.target
+      Before=ssh.service NetworkManager.service
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/sbin/liquid-grow-rootfs
+
+      [Install]
+      WantedBy=multi-user.target
+      EOF
+    - |-
       cat > "$1/etc/systemd/system/getty@tty1.service.d/10-liquid-autologin.conf" <<EOF
       [Service]
       ExecStart=
       ExecStart=-/sbin/agetty --autologin $IGconf_device_user1 --noclear %I \$TERM
       EOF
     - |-
+      if chroot "$1" id "$IGconf_device_user1" >/dev/null 2>&1; then
+        chroot "$1" chown "$IGconf_device_user1:$IGconf_device_user1" "/home/$IGconf_device_user1/.bashrc" "/home/$IGconf_device_user1/.zshrc"
+        chroot "$1" usermod -s /usr/bin/zsh "$IGconf_device_user1"
+      fi
+    - |-
+      if [ -n "${IGconf_liquid_repo_url:-}" ]; then
+        repo_dir="$1/home/$IGconf_device_user1/liquid"
+        rm -rf "$repo_dir"
+        git clone "$IGconf_liquid_repo_url" "$repo_dir"
+        git -C "$repo_dir" checkout --detach "$IGconf_liquid_repo_ref"
+        git -C "$repo_dir" checkout -B "$IGconf_liquid_runtime_branch"
+        git -C "$repo_dir" branch --set-upstream-to="origin/$IGconf_liquid_runtime_branch" "$IGconf_liquid_runtime_branch" || true
+        chroot "$1" chown -R "$IGconf_device_user1:$IGconf_device_user1" "/home/$IGconf_device_user1/liquid"
+        if [ -f "$repo_dir/code/Cargo.toml" ]; then
+          uchroot "$1" 'cd "$HOME/liquid/code" && cargo build --release --no-default-features --example terminal'
+        fi
+      fi
+    - |-
       cat > "$1/etc/motd" <<'EOF'
       Liquid Raspberry Pi OS Lite
 
-      First boot:
+      First boot may reboot once while the root filesystem expands.
+
+      Setup:
         1. The local console auto-logs in as liquid.
         2. Set your own password with: sudo passwd liquid
         3. Join Wi-Fi with: sudo nmtui
         4. Inspect Wi-Fi/Bluetooth/SSH with: liquid-doctor
+
+      Dev tools:
+        git, gh, cargo, rustc, rustfmt, clippy, zsh, fzf, zoxide,
+        tree, bat, ripgrep, btop, tmux, fastfetch
+
+      Runtime:
+        /home/liquid/liquid contains the baked Git checkout.
+        The local tty1 console auto-attaches to tmux session: liquid
+        Start manually with: liquid-start --attach
+        Update intentionally with: liquid-update
 
       Bluetooth:
         bluetoothctl
@@ -62,5 +159,5 @@ mmdebstrap:
         default-agent
         scan on
       EOF
-    - $BDEBSTRAP_HOOKS/enable-units "$1" ssh NetworkManager avahi-daemon bluetooth hciuart
+    - $BDEBSTRAP_HOOKS/enable-units "$1" ssh NetworkManager avahi-daemon bluetooth hciuart liquid-grow-rootfs
     - $BDEBSTRAP_HOOKS/disable-units "$1" iwd systemd-networkd

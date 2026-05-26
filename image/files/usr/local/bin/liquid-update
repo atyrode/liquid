@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_dir="${LIQUID_REPO_DIR:-$HOME/liquid}"
+
+if [ ! -d "$repo_dir/.git" ]; then
+  echo "Liquid repo checkout is missing: $repo_dir" >&2
+  exit 1
+fi
+
+cd "$repo_dir"
+
+branch="$(git symbolic-ref --quiet --short HEAD || true)"
+if [ -z "$branch" ]; then
+  echo "Liquid repo is detached; checkout the branch you want before updating." >&2
+  exit 1
+fi
+
+git fetch --prune origin
+git pull --ff-only origin "$branch"
+
+cd code
+cargo build --release --no-default-features --example terminal
+
+echo "Updated $repo_dir on branch $branch."

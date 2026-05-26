@@ -7,13 +7,18 @@ device:
 image:
   layer: image-rpios
   boot_part_size: 200%
-  root_part_size: 300%
+  root_part_size: 8G
   name: liquid-rpi3-lite
   compression: zstd
 
 layer:
   base: trixie-minbase
   liquid: liquid-headless-kit
+
+liquid:
+  repo_url: https://github.com/atyrode/liquid.git
+  repo_ref: main
+  runtime_branch: main
 
 ssh:
   pubkey_only: n

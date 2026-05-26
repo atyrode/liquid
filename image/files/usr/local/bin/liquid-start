@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+attach=0
+session="${LIQUID_TMUX_SESSION:-liquid}"
+
+usage() {
+  cat <<'EOF'
+Usage: liquid-start [--attach]
+
+Starts the Liquid terminal renderer in a tmux session named "liquid".
+
+Options:
+  --attach   Attach to the tmux session after starting it.
+  -h, --help Show this help.
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --attach)
+      attach=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if ! command -v tmux >/dev/null 2>&1; then
+  exec liquid-run-terminal
+fi
+
+if ! tmux has-session -t "$session" 2>/dev/null; then
+  tmux new-session -d -s "$session" liquid-run-terminal
+fi
+
+if [ "$attach" -eq 1 ]; then
+  exec tmux attach-session -t "$session"
+fi
+
+echo "Liquid renderer is running in tmux session: $session"
+echo "Attach with: tmux attach -t $session"
