@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - .github/workflows/build-image.yml
+      - code/**
       - image/**
       - scripts/bootstrap-pi.sh
       - scripts/pi-doctor.sh
@@ -55,7 +56,10 @@ jobs:
           /tmp/rpi-image-gen/rpi-image-gen metadata --lint "$GITHUB_WORKSPACE/image/layer/liquid-headless-kit.yaml"
           /tmp/rpi-image-gen/rpi-image-gen build \
             -S "$GITHUB_WORKSPACE/image" \
-            -c "$GITHUB_WORKSPACE/image/config/liquid-rpi3-lite.yaml"
+            -c "$GITHUB_WORKSPACE/image/config/liquid-rpi3-lite.yaml" \
+            -- \
+            liquid_repo_ref="$GITHUB_SHA" \
+            liquid_runtime_branch="$GITHUB_REF_NAME"
 
           deploy_dir="$(find "$GITHUB_WORKSPACE/work" -maxdepth 1 -type d -name 'deploy-*' -print | sort | tail -n 1)"
           test -n "$deploy_dir"

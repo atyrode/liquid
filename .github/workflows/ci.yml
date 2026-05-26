@@ -16,6 +16,9 @@ jobs:
         run: |
           bash -n scripts/*.sh
           bash -n image/pre-image.sh
+          bash -n image/files/usr/local/bin/liquid-run-terminal
+          bash -n image/files/usr/local/bin/liquid-start
+          bash -n image/files/usr/local/bin/liquid-update
           bash -n image/files/usr/local/sbin/liquid-bootstrap
           bash -n image/files/usr/local/sbin/liquid-doctor
           bash -n image/files/usr/local/sbin/liquid-grow-rootfs
@@ -23,11 +26,16 @@ jobs:
         run: |
           cmp scripts/bootstrap-pi.sh image/files/usr/local/sbin/liquid-bootstrap
           cmp scripts/pi-doctor.sh image/files/usr/local/sbin/liquid-doctor
+      - name: Check terminal renderer
+        run: cargo check --manifest-path code/Cargo.toml --no-default-features --example terminal
       - name: Run ShellCheck when available
         run: |
           if command -v shellcheck >/dev/null 2>&1; then
             shellcheck scripts/*.sh
             shellcheck image/pre-image.sh
+            shellcheck image/files/usr/local/bin/liquid-run-terminal
+            shellcheck image/files/usr/local/bin/liquid-start
+            shellcheck image/files/usr/local/bin/liquid-update
             shellcheck image/files/usr/local/sbin/liquid-bootstrap
             shellcheck image/files/usr/local/sbin/liquid-doctor
             shellcheck image/files/usr/local/sbin/liquid-grow-rootfs

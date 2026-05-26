@@ -16,6 +16,24 @@
 # X-Env-Var-assets-Required: n
 # X-Env-Var-assets-Valid: string
 # X-Env-Var-assets-Set: y
+#
+# X-Env-Var-repo_url: https://github.com/atyrode/liquid.git
+# X-Env-Var-repo_url-Desc: Git repository cloned into the Pi image.
+# X-Env-Var-repo_url-Required: n
+# X-Env-Var-repo_url-Valid: string
+# X-Env-Var-repo_url-Set: y
+#
+# X-Env-Var-repo_ref: main
+# X-Env-Var-repo_ref-Desc: Git ref checked out in the baked repo copy.
+# X-Env-Var-repo_ref-Required: n
+# X-Env-Var-repo_ref-Valid: string
+# X-Env-Var-repo_ref-Set: y
+#
+# X-Env-Var-runtime_branch: main
+# X-Env-Var-runtime_branch-Desc: Local branch name configured in the baked repo.
+# X-Env-Var-runtime_branch-Required: n
+# X-Env-Var-runtime_branch-Valid: string
+# X-Env-Var-runtime_branch-Set: y
 # METAEND
 ---
 mmdebstrap:
@@ -60,6 +78,9 @@ mmdebstrap:
     - install -Dm0755 "$IGconf_liquid_assets/usr/local/sbin/liquid-bootstrap" "$1/usr/local/sbin/liquid-bootstrap"
     - install -Dm0755 "$IGconf_liquid_assets/usr/local/sbin/liquid-doctor" "$1/usr/local/sbin/liquid-doctor"
     - install -Dm0755 "$IGconf_liquid_assets/usr/local/sbin/liquid-grow-rootfs" "$1/usr/local/sbin/liquid-grow-rootfs"
+    - install -Dm0755 "$IGconf_liquid_assets/usr/local/bin/liquid-run-terminal" "$1/usr/local/bin/liquid-run-terminal"
+    - install -Dm0755 "$IGconf_liquid_assets/usr/local/bin/liquid-start" "$1/usr/local/bin/liquid-start"
+    - install -Dm0755 "$IGconf_liquid_assets/usr/local/bin/liquid-update" "$1/usr/local/bin/liquid-update"
     - install -Dm0644 "$IGconf_liquid_assets/etc/profile.d/liquid-dev-tools.sh" "$1/etc/profile.d/liquid-dev-tools.sh"
     - install -Dm0644 "$IGconf_liquid_assets/home/liquid/.bashrc" "$1/home/$IGconf_device_user1/.bashrc"
     - install -Dm0644 "$IGconf_liquid_assets/home/liquid/.zshrc" "$1/home/$IGconf_device_user1/.zshrc"
@@ -97,6 +118,19 @@ mmdebstrap:
         chroot "$1" usermod -s /usr/bin/zsh "$IGconf_device_user1"
       fi
     - |-
+      if [ -n "${IGconf_liquid_repo_url:-}" ]; then
+        repo_dir="$1/home/$IGconf_device_user1/liquid"
+        rm -rf "$repo_dir"
+        git clone "$IGconf_liquid_repo_url" "$repo_dir"
+        git -C "$repo_dir" checkout --detach "$IGconf_liquid_repo_ref"
+        git -C "$repo_dir" checkout -B "$IGconf_liquid_runtime_branch"
+        git -C "$repo_dir" branch --set-upstream-to="origin/$IGconf_liquid_runtime_branch" "$IGconf_liquid_runtime_branch" || true
+        chroot "$1" chown -R "$IGconf_device_user1:$IGconf_device_user1" "/home/$IGconf_device_user1/liquid"
+        if [ -f "$repo_dir/code/Cargo.toml" ]; then
+          uchroot "$1" 'cd "$HOME/liquid/code" && cargo build --release --no-default-features --example terminal'
+        fi
+      fi
+    - |-
       cat > "$1/etc/motd" <<'EOF'
       Liquid Raspberry Pi OS Lite
 
@@ -111,6 +145,12 @@ mmdebstrap:
       Dev tools:
         git, gh, cargo, rustc, rustfmt, clippy, zsh, fzf, zoxide,
         tree, bat, ripgrep, btop, tmux, fastfetch
+
+      Runtime:
+        /home/liquid/liquid contains the baked Git checkout.
+        The local tty1 console auto-attaches to tmux session: liquid
+        Start manually with: liquid-start --attach
+        Update intentionally with: liquid-update
 
       Bluetooth:
         bluetoothctl

@@ -18,3 +18,11 @@ if command -v fastfetch >/dev/null 2>&1; then
 elif command -v neofetch >/dev/null 2>&1; then
   neofetch
 fi
+
+if [ -z "${LIQUID_NO_AUTO_TMUX:-}" ] &&
+  [ -z "${SSH_CONNECTION:-}" ] &&
+  [ -z "${TMUX:-}" ] &&
+  [ "$(tty 2>/dev/null)" = "/dev/tty1" ] &&
+  command -v liquid-start >/dev/null 2>&1; then
+  liquid-start --attach
+fi

@@ -15,5 +15,10 @@ layer:
   base: trixie-minbase
   liquid: liquid-headless-kit
 
+liquid:
+  repo_url: https://github.com/atyrode/liquid.git
+  repo_ref: main
+  runtime_branch: main
+
 ssh:
   pubkey_only: n
