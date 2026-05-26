@@ -48,9 +48,9 @@ password: none; tty1 auto-login is enabled
 ```
 
 On first boot, the image may reboot once while `liquid-grow-rootfs` expands the
-root partition to fill the flashed card. The image boots by filesystem label
-instead of `/dev/disk/by-slot/system`, so normal partition expansion should not
-break root device discovery.
+root partition to fill the flashed card. The image boots by the generated root
+filesystem UUID instead of `/dev/disk/by-slot/system`, so normal partition
+expansion should not break root device discovery.
 
 After the expansion reboot, tty1 auto-logs in as `liquid` and attaches to a
 tmux session named `liquid`. That tmux session runs the prebuilt terminal
@@ -194,9 +194,8 @@ generated image work directories or release assets.
 
 The repo includes `image/pre-image.sh`, which patches the pinned
 `image-rpios` setup script during image generation so `/etc/fstab` and
-`cmdline.txt` use `/dev/disk/by-label/ROOT` and `/dev/disk/by-label/BOOT`
-instead of slot symlinks. This avoids the root-device boot failure seen after
-root partition expansion.
+`cmdline.txt` use generated filesystem UUIDs instead of slot or label symlinks.
+This avoids root-device boot failures from missing `/dev/disk/...` symlinks.
 
 Run it manually from GitHub Actions when needed. Optionally provide a release tag
 such as:
