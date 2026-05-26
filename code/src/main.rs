@@ -15,7 +15,7 @@ const HEIGHT: usize = 1080;
 use std::cmp::{min, max};
 
 fn main() {
-	let mut particles = Particles::new(2000, WIDTH as f64, HEIGHT as f64);
+	let mut particles = Particles::new(5000, WIDTH as f64, HEIGHT as f64);
 
     let mut buffer: Vec<u32> = vec![0; WIDTH * HEIGHT];
 
@@ -40,10 +40,9 @@ fn main() {
 
 
 		for i in 0..particles.pos.len() {
-			draw_square(&mut buffer, particles.pos[i].x as i32, HEIGHT as i32 - particles.pos[i].y as i32, 2);
+			draw_square(&mut buffer, particles.pos[i].x as i32, HEIGHT as i32 - particles.pos[i].y as i32, 15);
 		}
 		particles.frame(1. / 60.);
-		println!("{:?}", particles.pos[0]);
 
 
 
@@ -57,9 +56,10 @@ fn main() {
 fn draw_square(buffer: &mut Vec<u32>, x: i32, y: i32, extent: i32) {
 	for i in -extent..extent {
 		for j in -extent..extent {
+			if (i * i + j * j).isqrt() > extent {continue}
 			let fx = min(WIDTH as i32 - 1, max(0, x + i)) as usize;
 			let fy = min(HEIGHT as i32 - 1, max(0, y + j)) as usize;
-			buffer[fy * WIDTH + fx] = 0x00AAFF;
+			buffer[fy * WIDTH + fx] = (buffer[fy * WIDTH + fx] as f32 * 0.9 + 0x00AAFF as f32 * 0.1) as u32;
 		}
 	}
 }

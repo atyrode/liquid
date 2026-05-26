@@ -17,10 +17,10 @@ impl Vec2f64 {
     }
     pub fn normalized(self) -> Self {
         let length = self.length();
-        if self.length() == 0. {
-            return Vec2f64 { x: 0., y: 0. };
+        if length == 0. {
+            return Vec2f64 { x: 0.75, y: 0.75 };
         }
-        self / self.length()
+        self / length
     }
 }
 
@@ -83,6 +83,7 @@ pub struct Particles {
     pub velocity: Vec<Vec2f64>,
     pub board_width: f64,
     pub board_height: f64,
+	pub time: f64,
 }
 
 use rand::RngExt;
@@ -106,25 +107,40 @@ impl Particles {
             velocity,
             board_width,
             board_height,
+			time: 0.,
         }
     }
 
     pub fn frame(&mut self, delta: f64) {
+		self.time += delta;
         self.compute_new_velocity(delta);
         self.move_frame(delta);
     }
 
     fn compute_new_velocity(&mut self, delta: f64) {
-		const REPULSION_DISTANCE: f64 = 50.0;
+		const REPULSION_DISTANCE: f64 = 30.0;
         for i in 0..self.velocity.len() {
-            if self.pos[i].y < self.board_height - 5. {
-                self.velocity[i].y += GRAVITY * delta;
-            }
+			let rotated_gravity = Vec2f64 {
+				x: (self.time * 0.1).sin(),
+				y: (self.time * 0.1).cos(),
+			} * GRAVITY;
+            self.velocity[i] += rotated_gravity * delta;
             self.velocity[i] += noise2d_signed(self.pos[i].x, self.pos[i].y) * 10.;
-            let dist_to_floor = self.pos[i].y;
-            if dist_to_floor < 10. {
-                self.velocity[i].y += 35.;
+
+            if self.pos[i].y < 20. {
+				// TODO: RN Gravity is only countaeracted when going down, should depend on real gravity which can rotate !
+                self.velocity[i].y += 35. + GRAVITY * delta;
             }
+            if self.pos[i].y > self.board_height - 20. {
+                self.velocity[i].y -= 35.;
+            }
+            if self.pos[i].x < 20. {
+                self.velocity[i].x += 35.;
+            }
+            if self.pos[i].x > self.board_width - 20. {
+                self.velocity[i].x -= 35.;
+            }
+
             for j in (i + 1)..self.velocity.len() {
                 if i == j {
                     continue;
@@ -135,7 +151,7 @@ impl Particles {
                     self.velocity[i] +=
                         (self.pos[i] - self.pos[j]).normalized() * delta * ratio * 150.;
                     self.velocity[j] +=
-                        (self.pos[j] - self.pos[i]).normalized() * delta * ratio * 150.;
+                        (self.pos[i] - self.pos[j]).normalized() * delta * -ratio * 150.;
                 }
             }
         }
