@@ -145,6 +145,6 @@ Bluetooth pairing:
   connect XX:XX:XX:XX:XX:XX
 
 Diagnostics:
-  liquid-doctor
+  liquid doctor
   bash /tmp/pi-doctor.sh
 EOF

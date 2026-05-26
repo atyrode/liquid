@@ -31,7 +31,7 @@ Bluetooth command failed: bluetoothctl $*
 $output
 
 Try:
-  ~/liquid-control/doctor
+  liquid doctor
   sudo systemctl status bluetooth hciuart --no-pager
   bluetoothctl list
 EOF
@@ -60,7 +60,7 @@ if ! bluetoothctl list | grep -q '^Controller '; then
 No Bluetooth controller is visible to bluetoothctl.
 
 Try:
-  ~/liquid-control/doctor
+  liquid doctor
   sudo systemctl restart hciuart bluetooth
   bluetoothctl list
 EOF

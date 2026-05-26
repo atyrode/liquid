@@ -1,0 +1,368 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+default_repo_dir="$(cd -- "$script_dir/.." && pwd)"
+
+repo_dir="${LIQUID_REPO_DIR:-$default_repo_dir}"
+code_dir="$repo_dir/code"
+config_dir="${LIQUID_CONFIG_DIR:-$repo_dir/.liquid}"
+config_file="${LIQUID_CONFIG:-$config_dir/settings.env}"
+session="${LIQUID_TMUX_SESSION:-liquid}"
+terminal_bin="$code_dir/target/release/examples/terminal"
+
+usage() {
+  cat <<'EOF'
+Usage: liquid [COMMAND] [ARGS...]
+
+One entrypoint for the Liquid Pi runtime.
+
+Run without a command to open the terminal menu.
+
+Commands:
+  setup, settings      Open renderer setup/settings UI.
+  run [ARGS...]        Run the renderer in the current terminal.
+  start [--attach]     Start the renderer in tmux.
+  restart [--attach]   Restart the tmux renderer.
+  attach               Attach to the tmux renderer.
+  stop                 Stop the tmux renderer.
+  update               Pull the current Git branch and rebuild the renderer.
+  bluetooth            Pair/connect a Bluetooth keyboard or device.
+  doctor               Run runtime diagnostics.
+  help                 Show this help.
+EOF
+}
+
+need_repo() {
+  if [ ! -d "$code_dir" ]; then
+    echo "Liquid source checkout is missing: $code_dir" >&2
+    exit 1
+  fi
+}
+
+write_default_config() {
+  mkdir -p "$(dirname -- "$config_file")"
+  cat >"$config_file" <<'EOF'
+# Local Liquid renderer settings.
+# This file is written by `liquid setup` and ignored by git.
+
+LIQUID_PARTICLES=500
+LIQUID_FPS=20
+LIQUID_COLOR=deep-blue
+LIQUID_GRAVITY_SPIN=1
+LIQUID_STATUS=0
+LIQUID_AUTO_SIZE=1
+LIQUID_COLS=100
+LIQUID_ROWS=50
+EOF
+}
+
+ensure_config_file() {
+  if [ ! -f "$config_file" ]; then
+    write_default_config
+  fi
+}
+
+load_config() {
+  ensure_config_file
+  set -a
+  # shellcheck source=/dev/null
+  . "$config_file"
+  set +a
+}
+
+build_renderer_args() {
+  renderer_args=()
+
+  case "${LIQUID_AUTO_SIZE:-1}" in
+    1|true|yes|on)
+      renderer_args+=(--auto-size)
+      ;;
+    0|false|no|off)
+      renderer_args+=(--fixed-size --cols "${LIQUID_COLS:-100}" --rows "${LIQUID_ROWS:-50}")
+      ;;
+    *)
+      echo "Invalid LIQUID_AUTO_SIZE value: ${LIQUID_AUTO_SIZE}" >&2
+      exit 2
+      ;;
+  esac
+
+  renderer_args+=(
+    --particles "${LIQUID_PARTICLES:-500}"
+    --fps "${LIQUID_FPS:-20}"
+    --color "${LIQUID_COLOR:-deep-blue}"
+    --gravity-spin "${LIQUID_GRAVITY_SPIN:-1}"
+  )
+
+  case "${LIQUID_STATUS:-0}" in
+    1|true|yes|on)
+      renderer_args+=(--status)
+      ;;
+    0|false|no|off|"")
+      renderer_args+=(--no-status)
+      ;;
+    *)
+      echo "Invalid LIQUID_STATUS value: ${LIQUID_STATUS}" >&2
+      exit 2
+      ;;
+  esac
+}
+
+ensure_terminal_binary() {
+  need_repo
+
+  local needs_build=0
+  if [ ! -x "$terminal_bin" ]; then
+    needs_build=1
+  elif find "$code_dir/Cargo.toml" "$code_dir/Cargo.lock" "$code_dir/src" "$code_dir/examples" \
+    -type f -newer "$terminal_bin" -print -quit | grep -q .; then
+    needs_build=1
+  fi
+
+  if [ "$needs_build" -eq 1 ]; then
+    (cd "$code_dir" && cargo build --release --no-default-features --example terminal)
+  fi
+}
+
+run_renderer() {
+  export LIQUID_CONFIG="$config_file"
+  load_config
+  ensure_terminal_binary
+  build_renderer_args
+  exec "$terminal_bin" "${renderer_args[@]}" "$@"
+}
+
+open_setup() {
+  run_renderer --setup "$@"
+}
+
+start_renderer() {
+  local attach=0
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --attach)
+        attach=1
+        shift
+        ;;
+      -h|--help)
+        echo "Usage: liquid start [--attach]"
+        exit 0
+        ;;
+      *)
+        echo "Unknown option for start: $1" >&2
+        exit 2
+        ;;
+    esac
+  done
+
+  if ! command -v tmux >/dev/null 2>&1; then
+    run_renderer
+  fi
+
+  if ! tmux has-session -t "$session" 2>/dev/null; then
+    tmux new-session -d -s "$session" -c "$repo_dir" "$repo_dir/scripts/liquid run"
+  fi
+
+  if [ "$attach" -eq 1 ]; then
+    exec tmux attach-session -t "$session"
+  fi
+
+  echo "Liquid renderer is running in tmux session: $session"
+  echo "Attach with: liquid attach"
+}
+
+restart_renderer() {
+  local attach=0
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --attach)
+        attach=1
+        shift
+        ;;
+      -h|--help)
+        echo "Usage: liquid restart [--attach]"
+        exit 0
+        ;;
+      *)
+        echo "Unknown option for restart: $1" >&2
+        exit 2
+        ;;
+    esac
+  done
+
+  if ! command -v tmux >/dev/null 2>&1; then
+    run_renderer
+  fi
+
+  if tmux has-session -t "$session" 2>/dev/null; then
+    tmux kill-session -t "$session"
+  fi
+
+  tmux new-session -d -s "$session" -c "$repo_dir" "$repo_dir/scripts/liquid run"
+
+  if [ "$attach" -eq 1 ]; then
+    exec tmux attach-session -t "$session"
+  fi
+
+  echo "Liquid renderer restarted in tmux session: $session"
+  echo "Attach with: liquid attach"
+}
+
+attach_renderer() {
+  if ! command -v tmux >/dev/null 2>&1; then
+    echo "tmux is not installed; run in the current terminal with: liquid run" >&2
+    exit 1
+  fi
+
+  if ! tmux has-session -t "$session" 2>/dev/null; then
+    echo "No tmux session named $session is running. Start it with: liquid start" >&2
+    exit 1
+  fi
+
+  exec tmux attach-session -t "$session"
+}
+
+stop_renderer() {
+  if command -v tmux >/dev/null 2>&1 && tmux has-session -t "$session" 2>/dev/null; then
+    exec tmux kill-session -t "$session"
+  fi
+
+  echo "No tmux session named $session is running."
+}
+
+update_checkout() {
+  if [ ! -d "$repo_dir/.git" ]; then
+    echo "Liquid repo checkout is missing: $repo_dir" >&2
+    exit 1
+  fi
+
+  cd "$repo_dir"
+
+  local branch
+  branch="$(git symbolic-ref --quiet --short HEAD || true)"
+  if [ -z "$branch" ]; then
+    echo "Liquid repo is detached; checkout the branch you want before updating." >&2
+    exit 1
+  fi
+
+  git fetch --prune origin
+  git pull --ff-only origin "$branch"
+  ensure_terminal_binary
+
+  echo "Updated $repo_dir on branch $branch."
+}
+
+run_bluetooth() {
+  exec "$repo_dir/scripts/bluetooth-keyboard.sh" "$@"
+}
+
+run_doctor() {
+  exec "$repo_dir/scripts/pi-doctor.sh" "$@"
+}
+
+show_menu() {
+  local choice
+
+  if command -v dialog >/dev/null 2>&1 && [ -t 0 ] && [ -t 1 ]; then
+    choice="$(
+      dialog --stdout --clear \
+        --title "Liquid" \
+        --menu "Choose an action" 17 70 9 \
+        setup "Renderer setup/settings" \
+        start "Start renderer in tmux" \
+        attach "Attach to renderer tmux" \
+        restart "Restart renderer tmux" \
+        stop "Stop renderer tmux" \
+        update "Pull repo and rebuild renderer" \
+        bluetooth "Pair/connect Bluetooth keyboard" \
+        doctor "Run diagnostics" \
+        quit "Quit"
+    )" || exit 0
+    clear || true
+  else
+    cat <<'EOF'
+Liquid
+
+1. Renderer setup/settings
+2. Start renderer in tmux
+3. Attach to renderer tmux
+4. Restart renderer tmux
+5. Stop renderer tmux
+6. Pull repo and rebuild renderer
+7. Pair/connect Bluetooth keyboard
+8. Run diagnostics
+0. Quit
+
+EOF
+    printf 'Choose: '
+    read -r choice
+    case "$choice" in
+      1) choice="setup" ;;
+      2) choice="start" ;;
+      3) choice="attach" ;;
+      4) choice="restart" ;;
+      5) choice="stop" ;;
+      6) choice="update" ;;
+      7) choice="bluetooth" ;;
+      8) choice="doctor" ;;
+      0) choice="quit" ;;
+    esac
+  fi
+
+  dispatch "$choice"
+}
+
+dispatch() {
+  local command="${1:-menu}"
+  if [ "$#" -gt 0 ]; then
+    shift
+  fi
+
+  case "$command" in
+    ""|menu)
+      show_menu
+      ;;
+    setup|settings)
+      open_setup "$@"
+      ;;
+    run)
+      run_renderer "$@"
+      ;;
+    start)
+      start_renderer "$@"
+      ;;
+    restart)
+      restart_renderer "$@"
+      ;;
+    attach)
+      attach_renderer
+      ;;
+    stop)
+      stop_renderer
+      ;;
+    update)
+      update_checkout
+      ;;
+    bluetooth)
+      run_bluetooth "$@"
+      ;;
+    doctor)
+      run_doctor "$@"
+      ;;
+    quit|exit)
+      exit 0
+      ;;
+    help|-h|--help)
+      usage
+      ;;
+    *)
+      echo "Unknown liquid command: $command" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+}
+
+dispatch "$@"

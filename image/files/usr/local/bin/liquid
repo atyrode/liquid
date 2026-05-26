@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_dir="${LIQUID_REPO_DIR:-$HOME/liquid}"
+entrypoint="$repo_dir/scripts/liquid"
+
+if [ ! -x "$entrypoint" ]; then
+  echo "Liquid entrypoint is missing: $entrypoint" >&2
+  exit 1
+fi
+
+exec "$entrypoint" "$@"
