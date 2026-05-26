@@ -31,12 +31,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache rpi-image-gen checkout
+        uses: actions/cache@v4
+        with:
+          path: /tmp/rpi-image-gen
+          key: rpi-image-gen-${{ runner.os }}-${{ runner.arch }}-${{ env.RPI_IMAGE_GEN_REF }}
+
       - name: Install rpi-image-gen
         run: |
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends git zstd xz-utils
-          git clone --depth 1 --branch "$RPI_IMAGE_GEN_REF" https://github.com/raspberrypi/rpi-image-gen.git /tmp/rpi-image-gen
+          if [ ! -x /tmp/rpi-image-gen/rpi-image-gen ]; then
+            rm -rf /tmp/rpi-image-gen
+            git clone --depth 1 --branch "$RPI_IMAGE_GEN_REF" https://github.com/raspberrypi/rpi-image-gen.git /tmp/rpi-image-gen
+          fi
           cd /tmp/rpi-image-gen
           sudo ./install_deps.sh
 
@@ -48,7 +57,9 @@ jobs:
             -S "$GITHUB_WORKSPACE/image" \
             -c "$GITHUB_WORKSPACE/image/config/liquid-rpi3-lite.yaml"
 
-          image_path="$(find /tmp/rpi-image-gen/work -type f \( -name '*.img' -o -name '*.img.zst' -o -name '*.img.xz' \) -print | sort | tail -n 1)"
+          deploy_dir="$(find "$GITHUB_WORKSPACE/work" -maxdepth 1 -type d -name 'deploy-*' -print | sort | tail -n 1)"
+          test -n "$deploy_dir"
+          image_path="$(find "$deploy_dir" -maxdepth 1 -type f \( -name "$IMAGE_NAME.img" -o -name "$IMAGE_NAME.img.zst" -o -name "$IMAGE_NAME.img.xz" \) -print | sort | tail -n 1)"
           test -n "$image_path"
 
           short_sha="$(git rev-parse --short HEAD)"
