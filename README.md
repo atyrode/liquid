@@ -43,6 +43,11 @@ non-Nix `zconf` that restarts the login shell. Nix/Home Manager rebuild logic is
 not baked in because the Pi image does not use Nix as its system configuration
 manager.
 
+The `ls` alias uses `tree -L 1 --noreport --charset utf-8` by default so the
+directory connectors stay as line-drawing characters even if the first login
+environment has a conservative locale. Set `TREE_CHARSET=ascii` to opt back into
+plain ASCII connectors.
+
 The image does not include Wi-Fi credentials, SSH private keys, Bluetooth pairing
 secrets, or a desktop environment.
 

@@ -13,7 +13,7 @@ if command -v btop >/dev/null 2>&1; then
 fi
 
 if command -v tree >/dev/null 2>&1; then
-  alias ls="tree -L 1 --noreport"
+  alias ls='tree -L 1 --noreport --charset "${TREE_CHARSET:-utf-8}"'
 fi
 
 if command -v zoxide >/dev/null 2>&1; then
