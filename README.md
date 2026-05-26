@@ -333,6 +333,9 @@ Choose a color theme with `--color`:
 scripts/liquid run --auto-size --color deep-blue
 ```
 
+The renderer uses standard ANSI foreground colors for these themes so they work
+on the Pi console, SSH, and tmux without requiring truecolor support.
+
 Adjust the rotating gravity speed with `--gravity-spin`:
 
 ```sh
