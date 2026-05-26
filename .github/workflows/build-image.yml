@@ -48,7 +48,9 @@ jobs:
             -S "$GITHUB_WORKSPACE/image" \
             -c "$GITHUB_WORKSPACE/image/config/liquid-rpi3-lite.yaml"
 
-          image_path="$(find /tmp/rpi-image-gen/work -type f \( -name '*.img' -o -name '*.img.zst' -o -name '*.img.xz' \) -print | sort | tail -n 1)"
+          deploy_dir="$(find "$GITHUB_WORKSPACE/work" -maxdepth 1 -type d -name 'deploy-*' -print | sort | tail -n 1)"
+          test -n "$deploy_dir"
+          image_path="$(find "$deploy_dir" -maxdepth 1 -type f \( -name "$IMAGE_NAME.img" -o -name "$IMAGE_NAME.img.zst" -o -name "$IMAGE_NAME.img.xz" \) -print | sort | tail -n 1)"
           test -n "$image_path"
 
           short_sha="$(git rev-parse --short HEAD)"
