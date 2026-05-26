@@ -97,18 +97,18 @@ mmdebstrap:
     - install -Dm0755 "$IGconf_liquid_assets/usr/local/bin/liquid-start" "$1/usr/local/bin/liquid-start"
     - install -Dm0755 "$IGconf_liquid_assets/usr/local/bin/liquid-update" "$1/usr/local/bin/liquid-update"
     - install -Dm0644 "$IGconf_liquid_assets/etc/profile.d/liquid-dev-tools.sh" "$1/etc/profile.d/liquid-dev-tools.sh"
-    - install -Dm0644 "$IGconf_liquid_assets/home/operator/.bashrc" "$1/home/$IGconf_device_user1/.bashrc"
-    - install -Dm0644 "$IGconf_liquid_assets/home/operator/.zshrc" "$1/home/$IGconf_device_user1/.zshrc"
-    - install -Dm0644 "$IGconf_liquid_assets/home/operator/.liquid-shell.zsh" "$1/home/$IGconf_device_user1/.liquid-shell.zsh"
-    - install -Dm0644 "$IGconf_liquid_assets/home/operator/liquid-control/README.md" "$1/home/$IGconf_device_user1/liquid-control/README.md"
-    - install -Dm0644 "$IGconf_liquid_assets/home/operator/liquid-control/settings.env" "$1/home/$IGconf_device_user1/liquid-control/settings.env"
-    - install -Dm0755 "$IGconf_liquid_assets/home/operator/liquid-control/start" "$1/home/$IGconf_device_user1/liquid-control/start"
-    - install -Dm0755 "$IGconf_liquid_assets/home/operator/liquid-control/attach" "$1/home/$IGconf_device_user1/liquid-control/attach"
-    - install -Dm0755 "$IGconf_liquid_assets/home/operator/liquid-control/stop" "$1/home/$IGconf_device_user1/liquid-control/stop"
-    - install -Dm0755 "$IGconf_liquid_assets/home/operator/liquid-control/update" "$1/home/$IGconf_device_user1/liquid-control/update"
-    - install -Dm0755 "$IGconf_liquid_assets/home/operator/liquid-control/doctor" "$1/home/$IGconf_device_user1/liquid-control/doctor"
-    - install -Dm0755 "$IGconf_liquid_assets/home/operator/liquid-control/config" "$1/home/$IGconf_device_user1/liquid-control/config"
-    - install -Dm0755 "$IGconf_liquid_assets/home/operator/liquid-control/bluetooth" "$1/home/$IGconf_device_user1/liquid-control/bluetooth"
+    - install -Dm0644 "$IGconf_liquid_assets/home/artist/.bashrc" "$1/home/$IGconf_device_user1/.bashrc"
+    - install -Dm0644 "$IGconf_liquid_assets/home/artist/.zshrc" "$1/home/$IGconf_device_user1/.zshrc"
+    - install -Dm0644 "$IGconf_liquid_assets/home/artist/.liquid-shell.zsh" "$1/home/$IGconf_device_user1/.liquid-shell.zsh"
+    - install -Dm0644 "$IGconf_liquid_assets/home/artist/liquid-control/README.md" "$1/home/$IGconf_device_user1/liquid-control/README.md"
+    - install -Dm0644 "$IGconf_liquid_assets/home/artist/liquid-control/settings.env" "$1/home/$IGconf_device_user1/liquid-control/settings.env"
+    - install -Dm0755 "$IGconf_liquid_assets/home/artist/liquid-control/start" "$1/home/$IGconf_device_user1/liquid-control/start"
+    - install -Dm0755 "$IGconf_liquid_assets/home/artist/liquid-control/attach" "$1/home/$IGconf_device_user1/liquid-control/attach"
+    - install -Dm0755 "$IGconf_liquid_assets/home/artist/liquid-control/stop" "$1/home/$IGconf_device_user1/liquid-control/stop"
+    - install -Dm0755 "$IGconf_liquid_assets/home/artist/liquid-control/update" "$1/home/$IGconf_device_user1/liquid-control/update"
+    - install -Dm0755 "$IGconf_liquid_assets/home/artist/liquid-control/doctor" "$1/home/$IGconf_device_user1/liquid-control/doctor"
+    - install -Dm0755 "$IGconf_liquid_assets/home/artist/liquid-control/config" "$1/home/$IGconf_device_user1/liquid-control/config"
+    - install -Dm0755 "$IGconf_liquid_assets/home/artist/liquid-control/bluetooth" "$1/home/$IGconf_device_user1/liquid-control/bluetooth"
     - install -d "$1/etc/NetworkManager/conf.d"
     - install -d "$1/etc/systemd/system/getty@tty1.service.d"
     - |-
@@ -193,8 +193,8 @@ mmdebstrap:
       First boot may reboot once while the root filesystem expands.
 
       Setup:
-        1. The local console auto-logs in as operator.
-        2. Set your own password with: sudo passwd operator
+        1. The local console auto-logs in as artist.
+        2. Set your own password with: sudo passwd artist
         3. Join Wi-Fi with: sudo nmtui
         4. Pair a Bluetooth keyboard with: ~/liquid-control/bluetooth
         5. Inspect Wi-Fi/Bluetooth/SSH with: ~/liquid-control/doctor
