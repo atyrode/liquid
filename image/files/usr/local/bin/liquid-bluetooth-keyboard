@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+scan_seconds="${1:-12}"
+
+need_command() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "Missing required command: $1" >&2
+    exit 1
+  fi
+}
+
+run_sudo() {
+  if [ "$(id -u)" -eq 0 ]; then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
+cleanup() {
+  bluetoothctl scan off >/dev/null 2>&1 || true
+}
+
+need_command bluetoothctl
+need_command dialog
+trap cleanup EXIT
+
+if ! [[ "$scan_seconds" =~ ^[0-9]+$ ]]; then
+  echo "Scan duration must be a positive integer number of seconds." >&2
+  exit 2
+fi
+
+run_sudo systemctl start bluetooth >/dev/null 2>&1 || true
+run_sudo systemctl start hciuart >/dev/null 2>&1 || true
+if command -v rfkill >/dev/null 2>&1; then
+  run_sudo rfkill unblock bluetooth >/dev/null 2>&1 || true
+fi
+
+bluetoothctl power on >/dev/null
+bluetoothctl agent on >/dev/null
+bluetoothctl default-agent >/dev/null
+
+dialog --title "Bluetooth Keyboard" \
+  --msgbox "Put the keyboard in pairing mode, then press Enter to scan." 8 60
+
+dialog --title "Bluetooth Keyboard" \
+  --infobox "Scanning for Bluetooth devices for ${scan_seconds}s..." 5 60
+
+bluetoothctl scan on >/tmp/liquid-bluetooth-scan.log 2>&1 &
+scan_pid="$!"
+sleep "$scan_seconds"
+bluetoothctl scan off >/dev/null 2>&1 || true
+wait "$scan_pid" >/dev/null 2>&1 || true
+
+mapfile -t devices < <(
+  bluetoothctl devices |
+    awk '
+      /^Device [0-9A-Fa-f:]{17} / {
+        mac=$2
+        name=$0
+        sub(/^Device [0-9A-Fa-f:]{17} /, "", name)
+        print mac "\t" name
+      }
+    ' |
+    sort -k2
+)
+
+if [ "${#devices[@]}" -eq 0 ]; then
+  dialog --title "Bluetooth Keyboard" \
+    --msgbox "No Bluetooth devices were found. Check pairing mode and try again." 8 60
+  exit 1
+fi
+
+menu_items=()
+for device in "${devices[@]}"; do
+  IFS=$'\t' read -r mac name <<< "$device"
+  menu_items+=("$mac" "$name")
+done
+
+selected="$(
+  dialog --clear --stdout \
+    --title "Bluetooth Keyboard" \
+    --menu "Choose the keyboard or device to pair." 20 76 12 \
+    "${menu_items[@]}"
+)"
+
+if [ -z "$selected" ]; then
+  exit 0
+fi
+
+clear
+cat <<EOF
+Pairing $selected
+
+If a passkey appears, type it on the Bluetooth keyboard and press Enter.
+EOF
+
+bluetoothctl pair "$selected"
+bluetoothctl trust "$selected"
+bluetoothctl connect "$selected"
+
+dialog --title "Bluetooth Keyboard" \
+  --msgbox "Bluetooth device $selected is paired, trusted, and connected." 7 60

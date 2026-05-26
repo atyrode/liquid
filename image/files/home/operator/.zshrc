@@ -1,5 +1,9 @@
-if [ -f /etc/profile.d/liquid-dev-tools.sh ]; then
-  . /etc/profile.d/liquid-dev-tools.sh
+export ZSH=/opt/oh-my-zsh
+ZSH_THEME="robbyrussell"
+plugins=(git tmux)
+
+if [ -f "$ZSH/oh-my-zsh.sh" ]; then
+  . "$ZSH/oh-my-zsh.sh"
 fi
 
 if [ -f /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh ]; then
@@ -13,16 +17,16 @@ fi
 autoload -Uz compinit
 compinit
 
-if command -v fastfetch >/dev/null 2>&1; then
+if [ -f /etc/profile.d/liquid-dev-tools.sh ]; then
+  . /etc/profile.d/liquid-dev-tools.sh
+fi
+
+if [ -f "$HOME/.liquid-shell.zsh" ]; then
+  . "$HOME/.liquid-shell.zsh"
+fi
+
+if [ -z "${LIQUID_NO_FASTFETCH:-}" ] && command -v fastfetch >/dev/null 2>&1; then
   fastfetch
 elif command -v neofetch >/dev/null 2>&1; then
   neofetch
-fi
-
-if [ -z "${LIQUID_NO_AUTO_TMUX:-}" ] &&
-  [ -z "${SSH_CONNECTION:-}" ] &&
-  [ -z "${TMUX:-}" ] &&
-  [ "$(tty 2>/dev/null)" = "/dev/tty1" ] &&
-  command -v liquid-start >/dev/null 2>&1; then
-  liquid-start --attach
 fi

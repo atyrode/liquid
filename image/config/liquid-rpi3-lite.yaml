@@ -1,7 +1,7 @@
 device:
   layer: rpi3
   hostname: dogpi
-  user1: liquid
+  user1: operator
   user1sudo: nopasswd
 
 image:
@@ -19,6 +19,8 @@ liquid:
   repo_url: https://github.com/atyrode/liquid.git
   repo_ref: main
   runtime_branch: main
+  ohmyzsh_url: https://github.com/ohmyzsh/ohmyzsh.git
+  ohmyzsh_ref: 5ef67beadbe371d7f4ed3a7456240e0fd46608ce
 
 ssh:
   pubkey_only: n

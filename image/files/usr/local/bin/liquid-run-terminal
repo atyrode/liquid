@@ -3,10 +3,18 @@ set -euo pipefail
 
 repo_dir="${LIQUID_REPO_DIR:-$HOME/liquid}"
 code_dir="$repo_dir/code"
+config_file="${LIQUID_CONFIG:-$HOME/liquid-control/settings.env}"
 
 if [ ! -d "$code_dir" ]; then
   echo "Liquid source checkout is missing: $code_dir" >&2
   exit 1
+fi
+
+if [ -f "$config_file" ]; then
+  set -a
+  # shellcheck source=/dev/null
+  . "$config_file"
+  set +a
 fi
 
 cd "$code_dir"
