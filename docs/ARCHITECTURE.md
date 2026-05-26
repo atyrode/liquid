@@ -17,33 +17,31 @@ The image creates the `artist` user and bakes the repo into:
 /home/artist/liquid
 ```
 
-The operator-facing control directory is:
+The runtime entrypoint inside the checkout is:
 
 ```text
-/home/artist/liquid-control
+/home/artist/liquid/scripts/liquid
 ```
 
-`settings.env` in that directory is local installation state. It is intentionally
-not replaced by runtime syncs because it contains the current renderer defaults
-for that Pi.
-
-The command wrappers in `~/liquid-control` are repo-owned. New images symlink
-these files back to:
+The installed command is a thin shim:
 
 ```text
-~/liquid/image/files/home/artist/liquid-control
+/usr/local/bin/liquid -> /home/artist/liquid/scripts/liquid
 ```
 
-That lets `git pull` update `start`, `restart`, `stop`, `attach`, `config`,
-`update`, `doctor`, and `bluetooth` without reflashing. Older flashes can switch
-to this model with:
+All operator actions go through that one command. Running `liquid` without
+arguments opens a terminal menu; direct subcommands exist for scriptable actions
+such as `liquid setup`, `liquid restart`, `liquid bluetooth`, and
+`liquid doctor`.
 
-```sh
-~/liquid/scripts/sync-pi-runtime.sh
+Renderer settings are local installation state stored inside the checkout at:
+
+```text
+/home/artist/liquid/.liquid/settings.env
 ```
 
-The `/usr/local/bin/liquid-*` runtime commands are installed into the image and
-can also be refreshed on an existing Pi by the same sync script.
+The `.liquid/` directory is ignored by git. The setup UI writes this file, and
+normal `git pull` updates do not replace it.
 
 ## Boot Behavior
 
@@ -54,13 +52,13 @@ terminal example exists.
 The image does not auto-pull from GitHub on boot. Runtime updates are explicit:
 
 ```sh
-~/liquid-control/update
+liquid update
 ```
 
 After changing settings, restart the detached renderer with:
 
 ```sh
-~/liquid-control/restart
+liquid restart
 ```
 
 ## Rust Source Layout
@@ -90,11 +88,17 @@ terminal characters plus optional color.
 Interactive rendering uses crossterm to:
 
 - enter the terminal alternate screen
+- disable terminal line-wrap during animation
 - hide the cursor for the render loop
 - use raw mode so `q`, Esc, and Ctrl-C can exit cleanly
-- repaint from `(0, 0)` every frame
+- repaint from `(0, 0)` every frame without printing a trailing newline that can
+  scroll the bottom edge
 - clear the screen when auto-size dimensions change
 - restore the cursor, color state, raw mode, and normal screen on exit
+
+The changing status line is hidden by default because it redraws every frame and
+is visually noisy over SSH or tmux. Use `--status` or `LIQUID_STATUS=1` when
+debugging frame/config values.
 
 This avoids the visible prompt/cursor artifacts caused by repeatedly printing
 full frames into the normal terminal scrollback.

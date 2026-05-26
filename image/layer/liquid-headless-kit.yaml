@@ -89,14 +89,8 @@ mmdebstrap:
     - zsh-autosuggestions
     - zsh-syntax-highlighting
   customize-hooks:
-    - install -Dm0755 "$IGconf_liquid_assets/usr/local/sbin/liquid-bootstrap" "$1/usr/local/sbin/liquid-bootstrap"
-    - install -Dm0755 "$IGconf_liquid_assets/usr/local/sbin/liquid-doctor" "$1/usr/local/sbin/liquid-doctor"
     - install -Dm0755 "$IGconf_liquid_assets/usr/local/sbin/liquid-grow-rootfs" "$1/usr/local/sbin/liquid-grow-rootfs"
-    - install -Dm0755 "$IGconf_liquid_assets/usr/local/bin/liquid-bluetooth-keyboard" "$1/usr/local/bin/liquid-bluetooth-keyboard"
-    - install -Dm0755 "$IGconf_liquid_assets/usr/local/bin/liquid-restart" "$1/usr/local/bin/liquid-restart"
-    - install -Dm0755 "$IGconf_liquid_assets/usr/local/bin/liquid-run-terminal" "$1/usr/local/bin/liquid-run-terminal"
-    - install -Dm0755 "$IGconf_liquid_assets/usr/local/bin/liquid-start" "$1/usr/local/bin/liquid-start"
-    - install -Dm0755 "$IGconf_liquid_assets/usr/local/bin/liquid-update" "$1/usr/local/bin/liquid-update"
+    - install -Dm0755 "$IGconf_liquid_assets/usr/local/bin/liquid" "$1/usr/local/bin/liquid"
     - install -Dm0644 "$IGconf_liquid_assets/etc/profile.d/liquid-dev-tools.sh" "$1/etc/profile.d/liquid-dev-tools.sh"
     - install -Dm0644 "$IGconf_liquid_assets/home/artist/.bashrc" "$1/home/$IGconf_device_user1/.bashrc"
     - install -Dm0644 "$IGconf_liquid_assets/home/artist/.zshrc" "$1/home/$IGconf_device_user1/.zshrc"
@@ -109,16 +103,6 @@ mmdebstrap:
     - install -Dm0644 "$IGconf_liquid_assets/home/artist/.liquid-shell.d/zconf.zsh" "$1/home/$IGconf_device_user1/.liquid-shell.d/zconf.zsh"
     - install -Dm0644 "$IGconf_liquid_assets/home/artist/.liquid-shell.d/tmux.zsh" "$1/home/$IGconf_device_user1/.liquid-shell.d/tmux.zsh"
     - install -Dm0644 "$IGconf_liquid_assets/home/artist/.liquid-shell.d/startup.zsh" "$1/home/$IGconf_device_user1/.liquid-shell.d/startup.zsh"
-    - install -Dm0644 "$IGconf_liquid_assets/home/artist/liquid-control/README.md" "$1/home/$IGconf_device_user1/liquid-control/README.md"
-    - install -Dm0644 "$IGconf_liquid_assets/home/artist/liquid-control/settings.env" "$1/home/$IGconf_device_user1/liquid-control/settings.env"
-    - install -Dm0755 "$IGconf_liquid_assets/home/artist/liquid-control/start" "$1/home/$IGconf_device_user1/liquid-control/start"
-    - install -Dm0755 "$IGconf_liquid_assets/home/artist/liquid-control/attach" "$1/home/$IGconf_device_user1/liquid-control/attach"
-    - install -Dm0755 "$IGconf_liquid_assets/home/artist/liquid-control/stop" "$1/home/$IGconf_device_user1/liquid-control/stop"
-    - install -Dm0755 "$IGconf_liquid_assets/home/artist/liquid-control/restart" "$1/home/$IGconf_device_user1/liquid-control/restart"
-    - install -Dm0755 "$IGconf_liquid_assets/home/artist/liquid-control/update" "$1/home/$IGconf_device_user1/liquid-control/update"
-    - install -Dm0755 "$IGconf_liquid_assets/home/artist/liquid-control/doctor" "$1/home/$IGconf_device_user1/liquid-control/doctor"
-    - install -Dm0755 "$IGconf_liquid_assets/home/artist/liquid-control/config" "$1/home/$IGconf_device_user1/liquid-control/config"
-    - install -Dm0755 "$IGconf_liquid_assets/home/artist/liquid-control/bluetooth" "$1/home/$IGconf_device_user1/liquid-control/bluetooth"
     - install -d "$1/etc/NetworkManager/conf.d"
     - install -d "$1/etc/systemd/system/getty@tty1.service.d"
     - |-
@@ -160,7 +144,7 @@ mmdebstrap:
       Group=$IGconf_device_user1
       WorkingDirectory=/home/$IGconf_device_user1
       Environment=LIQUID_NO_FASTFETCH=1
-      ExecStart=/usr/local/bin/liquid-start
+      ExecStart=/usr/local/bin/liquid start
       RemainAfterExit=yes
 
       [Install]
@@ -191,14 +175,6 @@ mmdebstrap:
         if [ -f "$repo_dir/code/Cargo.toml" ]; then
           uchroot "$1" 'cd "$HOME/liquid/code" && cargo build --release --no-default-features --example terminal'
         fi
-        for name in README.md attach bluetooth config doctor restart start stop update; do
-          src="$1/home/$IGconf_device_user1/liquid/image/files/home/artist/liquid-control/$name"
-          dest="$1/home/$IGconf_device_user1/liquid-control/$name"
-          if [ -e "$src" ]; then
-            rm -f "$dest"
-            ln -s "../liquid/image/files/home/artist/liquid-control/$name" "$dest"
-          fi
-        done
       fi
     - |-
       if chroot "$1" id "$IGconf_device_user1" >/dev/null 2>&1; then
@@ -214,8 +190,8 @@ mmdebstrap:
         1. The local console auto-logs in as artist.
         2. Set your own password with: sudo passwd artist
         3. Join Wi-Fi with: sudo nmtui
-        4. Pair a Bluetooth keyboard with: ~/liquid-control/bluetooth
-        5. Inspect Wi-Fi/Bluetooth/SSH with: ~/liquid-control/doctor
+        4. Pair a Bluetooth keyboard with: liquid bluetooth
+        5. Inspect Wi-Fi/Bluetooth/SSH with: liquid doctor
 
       Dev tools:
         git, gh, cargo, rustc, rustfmt, clippy, zsh, fzf, zoxide,
@@ -223,14 +199,14 @@ mmdebstrap:
 
       Runtime:
         ~/liquid contains the baked Git checkout.
-        ~/liquid-control contains repo-linked control scripts and local settings.
+        Local renderer settings live in ~/liquid/.liquid/settings.env.
         The renderer starts detached in tmux session: liquid.
-        Attach with: ~/liquid-control/attach
-        Tune defaults with: ~/liquid-control/config
-        Restart after config changes with: ~/liquid-control/restart
+        Open the runtime menu with: liquid
+        Attach with: liquid attach
+        Restart after settings changes with: liquid restart
 
       Bluetooth:
-        ~/liquid-control/bluetooth
+        liquid bluetooth
       EOF
     - $BDEBSTRAP_HOOKS/enable-units "$1" ssh NetworkManager avahi-daemon bluetooth hciuart liquid-grow-rootfs liquid-renderer
     - $BDEBSTRAP_HOOKS/disable-units "$1" iwd systemd-networkd

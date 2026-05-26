@@ -4,7 +4,10 @@ use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
     execute, queue,
     style::{Attribute, Color, Print, ResetColor, SetAttribute, SetForegroundColor},
-    terminal::{self, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{
+        self, Clear, ClearType, DisableLineWrap, EnableLineWrap, EnterAlternateScreen,
+        LeaveAlternateScreen,
+    },
 };
 use std::env;
 use std::fs;
@@ -28,6 +31,7 @@ struct Config {
     particles: usize,
     fps: u64,
     frames: Option<usize>,
+    show_status: bool,
 }
 
 impl Config {
@@ -41,6 +45,7 @@ impl Config {
             particles: 2_000,
             fps: 30,
             frames: None,
+            show_status: false,
         }
     }
 
@@ -70,6 +75,8 @@ impl Config {
                 "--fps" => config.fps = parse_next(&mut args, "--fps")?,
                 "--frames" => config.frames = Some(parse_next(&mut args, "--frames")?),
                 "--setup" => setup = true,
+                "--status" => config.show_status = true,
+                "--no-status" => config.show_status = false,
                 "-h" | "--help" => {
                     print_help();
                     std::process::exit(0);
@@ -117,6 +124,7 @@ impl Config {
             "LIQUID_PARTICLES",
             "LIQUID_FPS",
             "LIQUID_FRAMES",
+            "LIQUID_STATUS",
         ] {
             if let Ok(value) = env::var(key) {
                 self.apply_setting(key, value.as_str())?;
@@ -135,6 +143,7 @@ impl Config {
             "LIQUID_GRAVITY_SPIN" => self.gravity_spin = parse_setting(value, key)?,
             "LIQUID_PARTICLES" => self.particles = parse_setting(value, key)?,
             "LIQUID_FPS" => self.fps = parse_setting(value, key)?,
+            "LIQUID_STATUS" => self.show_status = parse_bool(value, key)?,
             "LIQUID_FRAMES" => {
                 self.frames = if value.is_empty() {
                     None
@@ -164,7 +173,7 @@ impl Config {
 
     fn grid_size(&self) -> GridSize {
         if self.auto_size {
-            terminal_grid_size().unwrap_or(GridSize {
+            terminal_grid_size(self.show_status).unwrap_or(GridSize {
                 cols: self.cols,
                 rows: self.rows,
             })
@@ -285,18 +294,21 @@ impl DensityGrid {
     }
 
     fn render(&self, frame: usize, config: &Config) -> String {
-        let mut output = String::with_capacity((self.cols + 1) * (self.rows + 2) * 2);
+        let status_rows = usize::from(config.show_status);
+        let mut output = String::with_capacity((self.cols + 1) * (self.rows + status_rows) * 2);
         output.push_str("\x1b[0m");
-        output.push_str(&format!(
-            "fluid_sim terminal | {}x{} | particles {} | fps {} | gravity spin {:.2} | color {:?} | frame {} | Ctrl-C/Q exits\x1b[K\n",
-            self.cols,
-            self.rows,
-            config.particles,
-            config.fps,
-            config.gravity_spin,
-            config.color,
-            frame
-        ));
+        if config.show_status {
+            output.push_str(&format!(
+                "fluid_sim terminal | {}x{} | particles {} | fps {} | gravity spin {:.2} | color {:?} | frame {} | Q/Esc exits\x1b[K\n",
+                self.cols,
+                self.rows,
+                config.particles,
+                config.fps,
+                config.gravity_spin,
+                config.color,
+                frame
+            ));
+        }
 
         for row in 0..self.rows {
             let mut current_color = None;
@@ -313,7 +325,10 @@ impl DensityGrid {
                 }
                 output.push(density_char(density));
             }
-            output.push_str("\x1b[0m\x1b[K\n");
+            output.push_str("\x1b[0m\x1b[K");
+            if row + 1 < self.rows {
+                output.push('\n');
+            }
         }
 
         output
@@ -395,6 +410,7 @@ impl RenderTerminalGuard {
         if let Err(err) = execute!(
             io::stdout(),
             EnterAlternateScreen,
+            DisableLineWrap,
             Hide,
             Clear(ClearType::All),
             MoveTo(0, 0)
@@ -415,6 +431,7 @@ impl Drop for RenderTerminalGuard {
                 ResetColor,
                 SetAttribute(Attribute::Reset),
                 Show,
+                EnableLineWrap,
                 LeaveAlternateScreen
             );
             let _ = terminal::disable_raw_mode();
@@ -447,6 +464,7 @@ enum SetupItem {
     Fps,
     Color,
     GravitySpin,
+    Status,
     AutoSize,
     Cols,
     Rows,
@@ -460,6 +478,7 @@ const SETUP_ITEMS: &[SetupItem] = &[
     SetupItem::Fps,
     SetupItem::Color,
     SetupItem::GravitySpin,
+    SetupItem::Status,
     SetupItem::AutoSize,
     SetupItem::Cols,
     SetupItem::Rows,
@@ -529,7 +548,7 @@ fn run_setup(mut config: Config) -> Result<Option<Config>, String> {
                     return Ok(Some(config));
                 }
                 SetupItem::Quit => return Ok(None),
-                SetupItem::Color | SetupItem::AutoSize => {
+                SetupItem::Color | SetupItem::Status | SetupItem::AutoSize => {
                     adjust_setup_value(&mut config, SETUP_ITEMS[selected], 1);
                 }
                 _ => {}
@@ -580,6 +599,7 @@ fn render_setup_row(
         SetupItem::Fps => "FPS",
         SetupItem::Color => "Color",
         SetupItem::GravitySpin => "Gravity spin",
+        SetupItem::Status => "Status line",
         SetupItem::AutoSize => "Auto size",
         SetupItem::Cols => "Columns",
         SetupItem::Rows => "Rows",
@@ -593,6 +613,13 @@ fn render_setup_row(
         SetupItem::Fps => config.fps.to_string(),
         SetupItem::Color => config.color.label().to_string(),
         SetupItem::GravitySpin => format!("{:.1}", config.gravity_spin),
+        SetupItem::Status => {
+            if config.show_status {
+                "on".to_string()
+            } else {
+                "off".to_string()
+            }
+        }
         SetupItem::AutoSize => {
             if config.auto_size {
                 "on".to_string()
@@ -648,6 +675,7 @@ fn adjust_setup_value(config: &mut Config, item: SetupItem, direction: i32) {
         SetupItem::GravitySpin => {
             config.gravity_spin = (config.gravity_spin + direction as f64 * 0.1).clamp(-10.0, 10.0);
         }
+        SetupItem::Status => config.show_status = !config.show_status,
         SetupItem::AutoSize => config.auto_size = !config.auto_size,
         SetupItem::Cols => {
             config.cols = adjust_usize(config.cols, direction, 1, 300, 5);
@@ -684,13 +712,14 @@ fn save_settings(config: &Config) -> Result<(), String> {
 
     let contents = format!(
         "\
-# Defaults used by liquid-run-terminal.\n\
-# Command-line arguments still win when you pass them manually.\n\
+# Local Liquid renderer settings.\n\
+# This file is written by `liquid setup` and ignored by git.\n\
 \n\
 LIQUID_PARTICLES={}\n\
 LIQUID_FPS={}\n\
 LIQUID_COLOR={}\n\
 LIQUID_GRAVITY_SPIN={:.1}\n\
+LIQUID_STATUS={}\n\
 LIQUID_AUTO_SIZE={}\n\
 LIQUID_COLS={}\n\
 LIQUID_ROWS={}\n",
@@ -698,6 +727,7 @@ LIQUID_ROWS={}\n",
         config.fps,
         config.color.as_arg(),
         config.gravity_spin,
+        if config.show_status { 1 } else { 0 },
         if config.auto_size { 1 } else { 0 },
         config.cols,
         config.rows
@@ -753,7 +783,7 @@ fn settings_path() -> Option<PathBuf> {
 
     env::var("HOME")
         .ok()
-        .map(|home| PathBuf::from(home).join("liquid-control/settings.env"))
+        .map(|home| PathBuf::from(home).join("liquid/.liquid/settings.env"))
 }
 
 fn project_axis(value: f64, world_size: f64, cells: usize) -> usize {
@@ -789,10 +819,11 @@ fn cell_color(theme: ColorTheme, density: f32) -> Option<(u8, u8, u8)> {
     })
 }
 
-fn terminal_grid_size() -> Option<GridSize> {
+fn terminal_grid_size(show_status: bool) -> Option<GridSize> {
     let (cols, rows) = terminal::size().ok()?;
     let cols = usize::from(cols).max(1);
-    let rows = usize::from(rows).saturating_sub(1).max(1);
+    let status_rows = usize::from(show_status);
+    let rows = usize::from(rows).saturating_sub(status_rows).max(1);
 
     Some(GridSize { cols, rows })
 }
@@ -816,6 +847,8 @@ Options:\n\
   --fps N         Target frames per second [default: 30]\n\
   --frames N      Stop after N frames, useful for smoke tests\n\
   --setup         Open the interactive setup screen before rendering\n\
+  --status        Show a changing status line above the animation\n\
+  --no-status     Hide the status line [default]\n\
   -h, --help      Show this help"
     );
 }

@@ -10,13 +10,14 @@ The image is intentionally headless:
 - SSH, Wi-Fi tools, Bluetooth tools, Avahi/mDNS, and diagnostics included
 - the Liquid repo is baked into `/home/artist/liquid`
 - the terminal renderer starts detached in tmux
-- repo-owned control scripts are exposed through `/home/artist/liquid-control`
-- local renderer settings live in `/home/artist/liquid-control/settings.env`
+- the runtime has one user-facing entrypoint: `liquid`
+- local renderer settings live inside the checkout at
+  `/home/artist/liquid/.liquid/settings.env`
 
 ## Documentation
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): Pi image, runtime commands,
-  control scripts, and renderer source layout.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): Pi image, single-command
+  runtime, local settings, and renderer source layout.
 - [docs/DEVELOPMENT_STEPS.md](docs/DEVELOPMENT_STEPS.md): current milestones,
   validation checkpoints, and next operator steps.
 
@@ -40,10 +41,8 @@ The custom image includes:
 - Python basics: `python3`, `python3-venv`, `python3-pip`, `python3-pil`
 - a Git checkout of `github.com/atyrode/liquid`
 - a prebuilt terminal renderer from `code/examples/terminal.rs`
-- repo-owned control scripts under `~/liquid-control`
-- local renderer defaults in `~/liquid-control/settings.env`
-- `liquid-bootstrap`
-- `liquid-doctor`
+- the `liquid` command, which dispatches to scripts in `~/liquid`
+- local renderer defaults in `~/liquid/.liquid/settings.env`
 - `liquid-grow-rootfs`
 
 The shell setup ports the portable parts of `atyrode/nix-dotfiles`: Oh My Zsh,
@@ -59,25 +58,10 @@ plain ASCII connectors.
 
 When the repo checkout exists at `~/liquid`, the shell loader prefers shell
 modules from `~/liquid/image/files/home/artist/.liquid-shell.d`. That lets
-normal repo updates change aliases and helpers without reflashing. On older
-flashes that still load the copied home modules directly, run this once after
-pulling:
+normal repo updates change aliases and helpers without a second dotfiles copy.
 
-```sh
-~/liquid/scripts/sync-pi-shell-loader.sh
-zconf
-```
-
-The same repo-update model is used for the control scripts. New images link
-`~/liquid-control/start`, `restart`, `stop`, `attach`, `config`, `update`,
-`doctor`, and `bluetooth` back to the baked repo checkout while keeping
-`~/liquid-control/settings.env` local. On older flashes, switch to that model
-after pulling with:
-
-```sh
-~/liquid/scripts/sync-pi-runtime.sh
-zconf
-```
+The installed `/usr/local/bin/liquid` command is only a thin shim into
+`~/liquid/scripts/liquid`; the runtime logic lives in the repo checkout.
 
 The image does not include Wi-Fi credentials, SSH private keys, Bluetooth pairing
 secrets, or a desktop environment.
@@ -111,67 +95,92 @@ detached in a tmux session named `liquid` using the baked repo checkout at:
 /home/artist/liquid
 ```
 
-The repo-owned control scripts and local settings live at:
-
-```text
-/home/artist/liquid-control
-```
-
-Attach locally or over SSH:
+Open the runtime menu:
 
 ```sh
-~/liquid-control/attach
+liquid
 ```
 
-Start or stop it manually if needed:
+Useful direct commands are subcommands of that one entrypoint:
 
 ```sh
-~/liquid-control/start
-~/liquid-control/stop
-```
-
-Restart it after changing renderer settings:
-
-```sh
-~/liquid-control/restart
-```
-
-Tune renderer defaults:
-
-```sh
-~/liquid-control/config
-```
-
-Or open the renderer's interactive setup screen:
-
-```sh
-liquid-run-terminal --setup
+liquid setup
+liquid start
+liquid attach
+liquid restart
+liquid stop
+liquid update
+liquid bluetooth
+liquid doctor
 ```
 
 The setup screen starts immediately if you press Enter. Move through values with
 the arrow keys, use left/right to adjust them, and choose `Save + start` to write
-`~/liquid-control/settings.env` before launching.
+`~/liquid/.liquid/settings.env` before launching.
+
+The renderer hides the changing status line by default to avoid flicker in tmux
+and SSH terminals. Enable it only when debugging with `--status` or
+`LIQUID_STATUS=1`.
 
 The image does not automatically pull from GitHub on boot. That keeps an
 installation from changing behavior just because the network is available.
 Update intentionally after Wi-Fi is connected:
 
 ```sh
-~/liquid-control/update
+liquid update
 ```
 
-On an already-flashed Pi, pull new repo-owned runtime scripts without reflashing:
+On an already-flashed Pi that does not yet have `/usr/local/bin/liquid`, run the
+repo entrypoint directly after pulling:
 
 ```sh
 cd ~/liquid
 git pull --ff-only
-~/liquid/scripts/sync-pi-runtime.sh
-zconf
+scripts/liquid
 ```
 
-That sync updates `/usr/local/bin/liquid-*`, links the command wrappers in
-`~/liquid-control` back to the repo, and preserves
-`~/liquid-control/settings.env`.
+Install the thin command shim only if you want to type `liquid` instead of
+`~/liquid/scripts/liquid` on that older image:
+
+```sh
+sudo install -m 0755 ~/liquid/image/files/usr/local/bin/liquid /usr/local/bin/liquid
+```
+
+If that Pi already has an older `liquid-renderer.service`, point it at the new
+single entrypoint:
+
+```sh
+sudo tee /etc/systemd/system/liquid-renderer.service >/dev/null <<'EOF'
+[Unit]
+Description=Start Liquid terminal renderer in tmux
+After=local-fs.target liquid-grow-rootfs.service
+ConditionPathExists=/home/artist/liquid/code/target/release/examples/terminal
+
+[Service]
+Type=oneshot
+User=artist
+Group=artist
+WorkingDirectory=/home/artist
+Environment=LIQUID_NO_FASTFETCH=1
+ExecStart=/usr/local/bin/liquid start
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload
+```
+
+Older flashed images may still have the previous helper commands and
+`~/liquid-control` directory. They are no longer part of the runtime model; after
+installing `/usr/local/bin/liquid`, remove them if you want the Pi to match the
+current layout:
+
+```sh
+rm -rf ~/liquid-control
+sudo rm -f /usr/local/bin/liquid-run-terminal /usr/local/bin/liquid-start /usr/local/bin/liquid-restart /usr/local/bin/liquid-update /usr/local/bin/liquid-bluetooth-keyboard
+sudo rm -f /usr/local/sbin/liquid-bootstrap /usr/local/sbin/liquid-doctor
+```
 
 There is no baked password. Set your own password locally before relying on SSH
 password login:
@@ -278,7 +287,7 @@ disk id before writing. It requires `zstd` for `.img.zst` images.
 Pair a Bluetooth keyboard or device with the image's terminal UI wrapper:
 
 ```sh
-~/liquid-control/bluetooth
+liquid bluetooth
 ```
 
 The wrapper uses `dialog` and `bluetoothctl` to scan, select, pair, trust, and
@@ -299,7 +308,7 @@ repo does not pre-pair devices.
 When Wi-Fi, SSH, or Bluetooth is not behaving, run:
 
 ```sh
-~/liquid-control/doctor
+liquid doctor
 ```
 
 The output is designed for troubleshooting. Review it before sharing because it
@@ -333,29 +342,14 @@ Release assets are generated by CI and are not committed to git.
 CI checks the source scripts and the baked copies:
 
 ```sh
+bash -n scripts/liquid
 bash -n scripts/*.sh
 bash -n image/pre-image.sh
-bash -n image/files/home/artist/liquid-control/attach
-bash -n image/files/home/artist/liquid-control/bluetooth
-bash -n image/files/home/artist/liquid-control/config
-bash -n image/files/home/artist/liquid-control/doctor
-bash -n image/files/home/artist/liquid-control/restart
-bash -n image/files/home/artist/liquid-control/start
-bash -n image/files/home/artist/liquid-control/stop
-bash -n image/files/home/artist/liquid-control/update
-bash -n image/files/usr/local/bin/liquid-bluetooth-keyboard
-bash -n image/files/usr/local/bin/liquid-restart
-bash -n image/files/usr/local/bin/liquid-run-terminal
-bash -n image/files/usr/local/bin/liquid-start
-bash -n image/files/usr/local/bin/liquid-update
-bash -n image/files/usr/local/sbin/liquid-bootstrap
-bash -n image/files/usr/local/sbin/liquid-doctor
+bash -n image/files/usr/local/bin/liquid
 bash -n image/files/usr/local/sbin/liquid-grow-rootfs
 zsh -n image/files/home/artist/.zshrc image/files/home/artist/.liquid-shell.zsh image/files/home/artist/.liquid-shell.d/*.zsh
-cmp scripts/bootstrap-pi.sh image/files/usr/local/sbin/liquid-bootstrap
-cmp scripts/pi-doctor.sh image/files/usr/local/sbin/liquid-doctor
 cargo check --manifest-path code/Cargo.toml --no-default-features --example terminal
-shellcheck scripts/*.sh image/pre-image.sh image/files/home/artist/liquid-control/attach image/files/home/artist/liquid-control/bluetooth image/files/home/artist/liquid-control/config image/files/home/artist/liquid-control/doctor image/files/home/artist/liquid-control/restart image/files/home/artist/liquid-control/start image/files/home/artist/liquid-control/stop image/files/home/artist/liquid-control/update image/files/usr/local/bin/liquid-* image/files/usr/local/sbin/liquid-*
+shellcheck scripts/liquid scripts/*.sh image/pre-image.sh image/files/usr/local/bin/liquid image/files/usr/local/sbin/liquid-*
 ```
 
 `shellcheck` is optional locally, but CI runs it when available.
@@ -363,32 +357,31 @@ shellcheck scripts/*.sh image/pre-image.sh image/files/home/artist/liquid-contro
 Run the terminal renderer without touching the main windowed simulation:
 
 ```sh
-cd code
-cargo run --release --no-default-features --example terminal -- --auto-size
+scripts/liquid run --auto-size
 ```
 
 Choose a color theme with `--color`:
 
 ```sh
-cargo run --release --no-default-features --example terminal -- --auto-size --color deep-blue
+scripts/liquid run --auto-size --color deep-blue
 ```
 
 Adjust the rotating gravity speed with `--gravity-spin`:
 
 ```sh
-cargo run --release --no-default-features --example terminal -- --auto-size --gravity-spin 3
+scripts/liquid run --auto-size --gravity-spin 3
 ```
 
-Open the setup screen explicitly:
+Open the setup screen explicitly with the repo script:
 
 ```sh
-cargo run --release --no-default-features --example terminal -- --setup
+scripts/liquid setup
 ```
 
 For a bounded smoke test that exits on its own:
 
 ```sh
-cargo run --release --no-default-features --example terminal -- --cols 40 --rows 20 --particles 500 --color cyan --gravity-spin 0 --frames 5
+scripts/liquid run --fixed-size --cols 40 --rows 20 --particles 500 --color cyan --gravity-spin 0 --frames 5
 ```
 
 Run the windowed developer renderer on a machine with a display:
