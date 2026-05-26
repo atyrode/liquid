@@ -16,13 +16,13 @@ jobs:
         run: |
           bash -n scripts/*.sh
           bash -n image/pre-image.sh
-          bash -n image/files/home/operator/liquid-control/attach
-          bash -n image/files/home/operator/liquid-control/bluetooth
-          bash -n image/files/home/operator/liquid-control/config
-          bash -n image/files/home/operator/liquid-control/doctor
-          bash -n image/files/home/operator/liquid-control/start
-          bash -n image/files/home/operator/liquid-control/stop
-          bash -n image/files/home/operator/liquid-control/update
+          bash -n image/files/home/artist/liquid-control/attach
+          bash -n image/files/home/artist/liquid-control/bluetooth
+          bash -n image/files/home/artist/liquid-control/config
+          bash -n image/files/home/artist/liquid-control/doctor
+          bash -n image/files/home/artist/liquid-control/start
+          bash -n image/files/home/artist/liquid-control/stop
+          bash -n image/files/home/artist/liquid-control/update
           bash -n image/files/usr/local/bin/liquid-bluetooth-keyboard
           bash -n image/files/usr/local/bin/liquid-run-terminal
           bash -n image/files/usr/local/bin/liquid-start
@@ -30,7 +30,7 @@ jobs:
           bash -n image/files/usr/local/sbin/liquid-bootstrap
           bash -n image/files/usr/local/sbin/liquid-doctor
           bash -n image/files/usr/local/sbin/liquid-grow-rootfs
-      - name: Verify image scripts match operator scripts
+      - name: Verify image scripts match source scripts
         run: |
           cmp scripts/bootstrap-pi.sh image/files/usr/local/sbin/liquid-bootstrap
           cmp scripts/pi-doctor.sh image/files/usr/local/sbin/liquid-doctor
@@ -41,13 +41,13 @@ jobs:
           if command -v shellcheck >/dev/null 2>&1; then
             shellcheck scripts/*.sh
             shellcheck image/pre-image.sh
-            shellcheck image/files/home/operator/liquid-control/attach
-            shellcheck image/files/home/operator/liquid-control/bluetooth
-            shellcheck image/files/home/operator/liquid-control/config
-            shellcheck image/files/home/operator/liquid-control/doctor
-            shellcheck image/files/home/operator/liquid-control/start
-            shellcheck image/files/home/operator/liquid-control/stop
-            shellcheck image/files/home/operator/liquid-control/update
+            shellcheck image/files/home/artist/liquid-control/attach
+            shellcheck image/files/home/artist/liquid-control/bluetooth
+            shellcheck image/files/home/artist/liquid-control/config
+            shellcheck image/files/home/artist/liquid-control/doctor
+            shellcheck image/files/home/artist/liquid-control/start
+            shellcheck image/files/home/artist/liquid-control/stop
+            shellcheck image/files/home/artist/liquid-control/update
             shellcheck image/files/usr/local/bin/liquid-bluetooth-keyboard
             shellcheck image/files/usr/local/bin/liquid-run-terminal
             shellcheck image/files/usr/local/bin/liquid-start

@@ -1,7 +1,7 @@
 device:
   layer: rpi3
   hostname: dogpi
-  user1: operator
+  user1: artist
   user1sudo: nopasswd
 
 image:
