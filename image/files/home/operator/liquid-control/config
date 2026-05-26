@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+config_file="${LIQUID_CONFIG:-$HOME/liquid-control/settings.env}"
+editor="${EDITOR:-nano}"
+
+if ! command -v "$editor" >/dev/null 2>&1; then
+  editor=vi
+fi
+
+exec "$editor" "$config_file"

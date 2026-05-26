@@ -21,6 +21,18 @@ alias python='python3'
 alias py='python3'
 alias pip='pip3'
 
+atmux() {
+  tmux attach-session -t "$1"
+}
+
+hub() {
+  repo="$1"
+  git clone "https://github.com/atyrode/$repo.git" || return 1
+  cd "$repo" || return 1
+  [ -d venv ] && command -v venv >/dev/null 2>&1 && venv
+  [ -f requirements.txt ] && command -v pipreq >/dev/null 2>&1 && pipreq
+}
+
 if [ -n "${BASH_VERSION:-}" ] && command -v zoxide >/dev/null 2>&1; then
   eval "$(zoxide init bash)"
 fi

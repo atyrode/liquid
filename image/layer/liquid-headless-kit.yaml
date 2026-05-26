@@ -34,6 +34,18 @@
 # X-Env-Var-runtime_branch-Required: n
 # X-Env-Var-runtime_branch-Valid: string
 # X-Env-Var-runtime_branch-Set: y
+#
+# X-Env-Var-ohmyzsh_url: https://github.com/ohmyzsh/ohmyzsh.git
+# X-Env-Var-ohmyzsh_url-Desc: Oh My Zsh repository cloned into the image.
+# X-Env-Var-ohmyzsh_url-Required: n
+# X-Env-Var-ohmyzsh_url-Valid: string
+# X-Env-Var-ohmyzsh_url-Set: y
+#
+# X-Env-Var-ohmyzsh_ref: 5ef67beadbe371d7f4ed3a7456240e0fd46608ce
+# X-Env-Var-ohmyzsh_ref-Desc: Pinned Oh My Zsh commit used by the image.
+# X-Env-Var-ohmyzsh_ref-Required: n
+# X-Env-Var-ohmyzsh_ref-Valid: string
+# X-Env-Var-ohmyzsh_ref-Set: y
 # METAEND
 ---
 mmdebstrap:
@@ -46,6 +58,7 @@ mmdebstrap:
     - ca-certificates
     - cargo
     - curl
+    - dialog
     - fd-find
     - fastfetch
     - fzf
@@ -53,6 +66,7 @@ mmdebstrap:
     - git
     - iw
     - network-manager
+    - nano
     - openssh-server
     - pkg-config
     - pi-bluetooth
@@ -78,14 +92,31 @@ mmdebstrap:
     - install -Dm0755 "$IGconf_liquid_assets/usr/local/sbin/liquid-bootstrap" "$1/usr/local/sbin/liquid-bootstrap"
     - install -Dm0755 "$IGconf_liquid_assets/usr/local/sbin/liquid-doctor" "$1/usr/local/sbin/liquid-doctor"
     - install -Dm0755 "$IGconf_liquid_assets/usr/local/sbin/liquid-grow-rootfs" "$1/usr/local/sbin/liquid-grow-rootfs"
+    - install -Dm0755 "$IGconf_liquid_assets/usr/local/bin/liquid-bluetooth-keyboard" "$1/usr/local/bin/liquid-bluetooth-keyboard"
     - install -Dm0755 "$IGconf_liquid_assets/usr/local/bin/liquid-run-terminal" "$1/usr/local/bin/liquid-run-terminal"
     - install -Dm0755 "$IGconf_liquid_assets/usr/local/bin/liquid-start" "$1/usr/local/bin/liquid-start"
     - install -Dm0755 "$IGconf_liquid_assets/usr/local/bin/liquid-update" "$1/usr/local/bin/liquid-update"
     - install -Dm0644 "$IGconf_liquid_assets/etc/profile.d/liquid-dev-tools.sh" "$1/etc/profile.d/liquid-dev-tools.sh"
-    - install -Dm0644 "$IGconf_liquid_assets/home/liquid/.bashrc" "$1/home/$IGconf_device_user1/.bashrc"
-    - install -Dm0644 "$IGconf_liquid_assets/home/liquid/.zshrc" "$1/home/$IGconf_device_user1/.zshrc"
+    - install -Dm0644 "$IGconf_liquid_assets/home/operator/.bashrc" "$1/home/$IGconf_device_user1/.bashrc"
+    - install -Dm0644 "$IGconf_liquid_assets/home/operator/.zshrc" "$1/home/$IGconf_device_user1/.zshrc"
+    - install -Dm0644 "$IGconf_liquid_assets/home/operator/.liquid-shell.zsh" "$1/home/$IGconf_device_user1/.liquid-shell.zsh"
+    - install -Dm0644 "$IGconf_liquid_assets/home/operator/liquid-control/README.md" "$1/home/$IGconf_device_user1/liquid-control/README.md"
+    - install -Dm0644 "$IGconf_liquid_assets/home/operator/liquid-control/settings.env" "$1/home/$IGconf_device_user1/liquid-control/settings.env"
+    - install -Dm0755 "$IGconf_liquid_assets/home/operator/liquid-control/start" "$1/home/$IGconf_device_user1/liquid-control/start"
+    - install -Dm0755 "$IGconf_liquid_assets/home/operator/liquid-control/attach" "$1/home/$IGconf_device_user1/liquid-control/attach"
+    - install -Dm0755 "$IGconf_liquid_assets/home/operator/liquid-control/stop" "$1/home/$IGconf_device_user1/liquid-control/stop"
+    - install -Dm0755 "$IGconf_liquid_assets/home/operator/liquid-control/update" "$1/home/$IGconf_device_user1/liquid-control/update"
+    - install -Dm0755 "$IGconf_liquid_assets/home/operator/liquid-control/doctor" "$1/home/$IGconf_device_user1/liquid-control/doctor"
+    - install -Dm0755 "$IGconf_liquid_assets/home/operator/liquid-control/config" "$1/home/$IGconf_device_user1/liquid-control/config"
+    - install -Dm0755 "$IGconf_liquid_assets/home/operator/liquid-control/bluetooth" "$1/home/$IGconf_device_user1/liquid-control/bluetooth"
     - install -d "$1/etc/NetworkManager/conf.d"
     - install -d "$1/etc/systemd/system/getty@tty1.service.d"
+    - |-
+      if [ -n "${IGconf_liquid_ohmyzsh_url:-}" ]; then
+        rm -rf "$1/opt/oh-my-zsh"
+        git clone "$IGconf_liquid_ohmyzsh_url" "$1/opt/oh-my-zsh"
+        git -C "$1/opt/oh-my-zsh" checkout --detach "$IGconf_liquid_ohmyzsh_ref"
+      fi
     - |-
       cat > "$1/etc/NetworkManager/conf.d/10-liquid-wifi.conf" <<'EOF'
       [device]
@@ -107,6 +138,25 @@ mmdebstrap:
       WantedBy=multi-user.target
       EOF
     - |-
+      cat > "$1/etc/systemd/system/liquid-renderer.service" <<EOF
+      [Unit]
+      Description=Start Liquid terminal renderer in tmux
+      After=local-fs.target liquid-grow-rootfs.service
+      ConditionPathExists=/home/$IGconf_device_user1/liquid/code/target/release/examples/terminal
+
+      [Service]
+      Type=oneshot
+      User=$IGconf_device_user1
+      Group=$IGconf_device_user1
+      WorkingDirectory=/home/$IGconf_device_user1
+      Environment=LIQUID_NO_FASTFETCH=1
+      ExecStart=/usr/local/bin/liquid-start
+      RemainAfterExit=yes
+
+      [Install]
+      WantedBy=multi-user.target
+      EOF
+    - |-
       cat > "$1/etc/systemd/system/getty@tty1.service.d/10-liquid-autologin.conf" <<EOF
       [Service]
       ExecStart=
@@ -114,8 +164,10 @@ mmdebstrap:
       EOF
     - |-
       if chroot "$1" id "$IGconf_device_user1" >/dev/null 2>&1; then
-        chroot "$1" chown "$IGconf_device_user1:$IGconf_device_user1" "/home/$IGconf_device_user1/.bashrc" "/home/$IGconf_device_user1/.zshrc"
         chroot "$1" usermod -s /usr/bin/zsh "$IGconf_device_user1"
+        if chroot "$1" getent group bluetooth >/dev/null 2>&1; then
+          chroot "$1" adduser "$IGconf_device_user1" bluetooth || true
+        fi
       fi
     - |-
       if [ -n "${IGconf_liquid_repo_url:-}" ]; then
@@ -125,10 +177,14 @@ mmdebstrap:
         git -C "$repo_dir" checkout --detach "$IGconf_liquid_repo_ref"
         git -C "$repo_dir" checkout -B "$IGconf_liquid_runtime_branch"
         git -C "$repo_dir" branch --set-upstream-to="origin/$IGconf_liquid_runtime_branch" "$IGconf_liquid_runtime_branch" || true
-        chroot "$1" chown -R "$IGconf_device_user1:$IGconf_device_user1" "/home/$IGconf_device_user1/liquid"
+        chroot "$1" chown -R "$IGconf_device_user1:$IGconf_device_user1" "/home/$IGconf_device_user1"
         if [ -f "$repo_dir/code/Cargo.toml" ]; then
           uchroot "$1" 'cd "$HOME/liquid/code" && cargo build --release --no-default-features --example terminal'
         fi
+      fi
+    - |-
+      if chroot "$1" id "$IGconf_device_user1" >/dev/null 2>&1; then
+        chroot "$1" chown -R "$IGconf_device_user1:$IGconf_device_user1" "/home/$IGconf_device_user1"
       fi
     - |-
       cat > "$1/etc/motd" <<'EOF'
@@ -137,27 +193,25 @@ mmdebstrap:
       First boot may reboot once while the root filesystem expands.
 
       Setup:
-        1. The local console auto-logs in as liquid.
-        2. Set your own password with: sudo passwd liquid
+        1. The local console auto-logs in as operator.
+        2. Set your own password with: sudo passwd operator
         3. Join Wi-Fi with: sudo nmtui
-        4. Inspect Wi-Fi/Bluetooth/SSH with: liquid-doctor
+        4. Pair a Bluetooth keyboard with: ~/liquid-control/bluetooth
+        5. Inspect Wi-Fi/Bluetooth/SSH with: ~/liquid-control/doctor
 
       Dev tools:
         git, gh, cargo, rustc, rustfmt, clippy, zsh, fzf, zoxide,
-        tree, bat, ripgrep, btop, tmux, fastfetch
+        tree, bat, ripgrep, btop, tmux, fastfetch, oh-my-zsh
 
       Runtime:
-        /home/liquid/liquid contains the baked Git checkout.
-        The local tty1 console auto-attaches to tmux session: liquid
-        Start manually with: liquid-start --attach
-        Update intentionally with: liquid-update
+        ~/liquid contains the baked Git checkout.
+        ~/liquid-control contains editable control scripts.
+        The renderer starts detached in tmux session: liquid.
+        Attach with: ~/liquid-control/attach
+        Tune defaults with: ~/liquid-control/config
 
       Bluetooth:
-        bluetoothctl
-        power on
-        agent on
-        default-agent
-        scan on
+        ~/liquid-control/bluetooth
       EOF
-    - $BDEBSTRAP_HOOKS/enable-units "$1" ssh NetworkManager avahi-daemon bluetooth hciuart liquid-grow-rootfs
+    - $BDEBSTRAP_HOOKS/enable-units "$1" ssh NetworkManager avahi-daemon bluetooth hciuart liquid-grow-rootfs liquid-renderer
     - $BDEBSTRAP_HOOKS/disable-units "$1" iwd systemd-networkd

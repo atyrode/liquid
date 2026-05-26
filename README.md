@@ -8,8 +8,9 @@ The image is intentionally headless:
 - no desktop or GUI
 - no repo-managed Wi-Fi passwords
 - SSH, Wi-Fi tools, Bluetooth tools, Avahi/mDNS, and diagnostics included
-- the Liquid repo is baked into `/home/liquid/liquid`
-- the terminal renderer starts automatically in tmux on the local console
+- the Liquid repo is baked into `/home/operator/liquid`
+- the terminal renderer starts detached in tmux
+- editable control scripts are baked into `/home/operator/liquid-control`
 
 ## What Is Baked In
 
@@ -25,14 +26,21 @@ The custom image includes:
 - `raspi-config`
 - `git`, `gh`, `build-essential`, `pkg-config`
 - `cargo`, `rustc`, `rustfmt`, `rust-clippy`
-- `zsh`, `zsh-autosuggestions`, `zsh-syntax-highlighting`
-- `tree`, `btop`, `bat`, `fd-find`, `fastfetch`, `fzf`, `ripgrep`, `tmux`, `zoxide`
+- `zsh`, Oh My Zsh, `zsh-autosuggestions`, `zsh-syntax-highlighting`
+- `tree`, `btop`, `bat`, `dialog`, `fd-find`, `fastfetch`, `fzf`, `nano`,
+  `ripgrep`, `tmux`, `zoxide`
 - Python basics: `python3`, `python3-venv`, `python3-pip`, `python3-pil`
 - a Git checkout of `github.com/atyrode/liquid`
 - a prebuilt terminal renderer from `code/examples/terminal.rs`
+- editable control scripts under `~/liquid-control`
 - `liquid-bootstrap`
 - `liquid-doctor`
 - `liquid-grow-rootfs`
+
+The shell setup ports the portable parts of `atyrode/nix-dotfiles`: Oh My Zsh,
+aliases, `zoxide`, `fzf`, tmux helpers, Git helper, and lightweight Python venv
+helpers. Nix/Home Manager commands such as `zconf` are intentionally not baked
+in because the Pi image does not use Nix as its system configuration manager.
 
 The image does not include Wi-Fi credentials, SSH private keys, Bluetooth pairing
 secrets, or a desktop environment.
@@ -43,7 +51,7 @@ Flash the latest Liquid image, boot the Pi with HDMI and a USB keyboard, then lo
 in on the local console:
 
 ```text
-user: liquid
+user: operator
 password: none; tty1 auto-login is enabled
 ```
 
@@ -52,24 +60,36 @@ root partition to fill the flashed card. The image boots by the generated root
 filesystem UUID instead of `/dev/disk/by-slot/system`, so normal partition
 expansion should not break root device discovery.
 
-After the expansion reboot, tty1 auto-logs in as `liquid` and attaches to a
-tmux session named `liquid`. That tmux session runs the prebuilt terminal
-renderer using the baked repo checkout at:
+After the expansion reboot, tty1 auto-logs in as `operator`. The renderer starts
+detached in a tmux session named `liquid` using the baked repo checkout at:
 
 ```text
-/home/liquid/liquid
+/home/operator/liquid
 ```
 
-Detach from the renderer with `Ctrl-b` then `d`. Reattach locally or over SSH:
+The editable control scripts live at:
 
-```sh
-tmux attach -t liquid
+```text
+/home/operator/liquid-control
 ```
 
-Start it manually if needed:
+Attach locally or over SSH:
 
 ```sh
-liquid-start --attach
+~/liquid-control/attach
+```
+
+Start or stop it manually if needed:
+
+```sh
+~/liquid-control/start
+~/liquid-control/stop
+```
+
+Tune renderer defaults:
+
+```sh
+~/liquid-control/config
 ```
 
 The image does not automatically pull from GitHub on boot. That keeps an
@@ -77,14 +97,14 @@ installation from changing behavior just because the network is available.
 Update intentionally after Wi-Fi is connected:
 
 ```sh
-liquid-update
+~/liquid-control/update
 ```
 
 There is no baked password. Set your own password locally before relying on SSH
 password login:
 
 ```sh
-sudo passwd liquid
+sudo passwd operator
 ```
 
 The local console auto-login is intentional for recovery/setup. Do not leave the
@@ -111,7 +131,7 @@ Keep those values out of git and out of shared terminal output.
 After Wi-Fi is connected, SSH from your workstation:
 
 ```sh
-ssh liquid@dogpi.local
+ssh operator@dogpi.local
 ```
 
 If mDNS does not resolve, use the IP shown by `hostname -I` on the Pi or by your
@@ -149,24 +169,20 @@ disk id before writing. It requires `zstd` for `.img.zst` images.
 
 ## Bluetooth
 
-After Wi-Fi and SSH are working, pair devices over SSH:
+Pair a Bluetooth keyboard or device with the image's terminal UI wrapper:
+
+```sh
+~/liquid-control/bluetooth
+```
+
+The wrapper uses `dialog` and `bluetoothctl` to scan, select, pair, trust, and
+connect a device. If a keyboard passkey is shown, type it on the Bluetooth
+keyboard and press Enter.
+
+The raw `bluetoothctl` tool is still available when manual debugging is needed:
 
 ```sh
 bluetoothctl
-power on
-agent on
-default-agent
-scan on
-```
-
-Put the Bluetooth keyboard or device in pairing mode, then replace the address
-below:
-
-```text
-pair XX:XX:XX:XX:XX:XX
-trust XX:XX:XX:XX:XX:XX
-connect XX:XX:XX:XX:XX:XX
-quit
 ```
 
 Bluetooth "ready" means the onboard Pi controller is powered and pairable. The
@@ -177,7 +193,7 @@ repo does not pre-pair devices.
 When Wi-Fi, SSH, or Bluetooth is not behaving, run:
 
 ```sh
-liquid-doctor
+~/liquid-control/doctor
 ```
 
 The output is designed for troubleshooting. Review it before sharing because it
@@ -213,6 +229,14 @@ CI checks the operator scripts and the baked copies:
 ```sh
 bash -n scripts/*.sh
 bash -n image/pre-image.sh
+bash -n image/files/home/operator/liquid-control/attach
+bash -n image/files/home/operator/liquid-control/bluetooth
+bash -n image/files/home/operator/liquid-control/config
+bash -n image/files/home/operator/liquid-control/doctor
+bash -n image/files/home/operator/liquid-control/start
+bash -n image/files/home/operator/liquid-control/stop
+bash -n image/files/home/operator/liquid-control/update
+bash -n image/files/usr/local/bin/liquid-bluetooth-keyboard
 bash -n image/files/usr/local/bin/liquid-run-terminal
 bash -n image/files/usr/local/bin/liquid-start
 bash -n image/files/usr/local/bin/liquid-update
@@ -222,7 +246,7 @@ bash -n image/files/usr/local/sbin/liquid-grow-rootfs
 cmp scripts/bootstrap-pi.sh image/files/usr/local/sbin/liquid-bootstrap
 cmp scripts/pi-doctor.sh image/files/usr/local/sbin/liquid-doctor
 cargo check --manifest-path code/Cargo.toml --no-default-features --example terminal
-shellcheck scripts/*.sh image/pre-image.sh image/files/usr/local/bin/liquid-* image/files/usr/local/sbin/liquid-*
+shellcheck scripts/*.sh image/pre-image.sh image/files/home/operator/liquid-control/attach image/files/home/operator/liquid-control/bluetooth image/files/home/operator/liquid-control/config image/files/home/operator/liquid-control/doctor image/files/home/operator/liquid-control/start image/files/home/operator/liquid-control/stop image/files/home/operator/liquid-control/update image/files/usr/local/bin/liquid-* image/files/usr/local/sbin/liquid-*
 ```
 
 `shellcheck` is optional locally, but CI runs it when available.
