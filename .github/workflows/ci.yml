@@ -30,6 +30,13 @@ jobs:
           bash -n image/files/usr/local/sbin/liquid-bootstrap
           bash -n image/files/usr/local/sbin/liquid-doctor
           bash -n image/files/usr/local/sbin/liquid-grow-rootfs
+          if command -v zsh >/dev/null 2>&1; then
+            zsh -n image/files/home/artist/.zshrc
+            zsh -n image/files/home/artist/.liquid-shell.zsh
+            zsh -n image/files/home/artist/.liquid-shell.d/*.zsh
+          else
+            echo "zsh not installed; skipping zsh syntax check"
+          fi
       - name: Verify image scripts match source scripts
         run: |
           cmp scripts/bootstrap-pi.sh image/files/usr/local/sbin/liquid-bootstrap

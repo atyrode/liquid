@@ -24,9 +24,3 @@ fi
 if [ -f "$HOME/.liquid-shell.zsh" ]; then
   . "$HOME/.liquid-shell.zsh"
 fi
-
-if [ -z "${LIQUID_NO_FASTFETCH:-}" ] && command -v fastfetch >/dev/null 2>&1; then
-  fastfetch
-elif command -v neofetch >/dev/null 2>&1; then
-  neofetch
-fi
