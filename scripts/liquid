@@ -29,6 +29,7 @@ Commands:
   update               Pull the current Git branch and rebuild the renderer.
   bluetooth            Pair/connect a Bluetooth keyboard or device.
   doctor               Run runtime diagnostics.
+  install-system       Install/update this checkout as the Pi runtime.
   help                 Show this help.
 EOF
 }
@@ -47,7 +48,7 @@ write_default_config() {
 # This file is written by `liquid setup` and ignored by git.
 
 LIQUID_PARTICLES=500
-LIQUID_FPS=20
+LIQUID_FPS=60
 LIQUID_COLOR=deep-blue
 LIQUID_GRAVITY_SPIN=1
 LIQUID_STATUS=0
@@ -89,7 +90,7 @@ build_renderer_args() {
 
   renderer_args+=(
     --particles "${LIQUID_PARTICLES:-500}"
-    --fps "${LIQUID_FPS:-20}"
+    --fps "${LIQUID_FPS:-60}"
     --color "${LIQUID_COLOR:-deep-blue}"
     --gravity-spin "${LIQUID_GRAVITY_SPIN:-1}"
   )
@@ -120,6 +121,7 @@ ensure_terminal_binary() {
   fi
 
   if [ "$needs_build" -eq 1 ]; then
+    printf '+ (cd %q && cargo build --release --no-default-features --example terminal)\n' "$code_dir"
     (cd "$code_dir" && cargo build --release --no-default-features --example terminal)
   fi
 }
@@ -254,6 +256,193 @@ update_checkout() {
   echo "Updated $repo_dir on branch $branch."
 }
 
+run() {
+  printf '+'
+  printf ' %q' "$@"
+  printf '\n'
+  "$@"
+}
+
+run_optional() {
+  printf '+'
+  printf ' %q' "$@"
+  printf '\n'
+  if ! "$@"; then
+    echo "Command failed; continuing because this cleanup step is optional." >&2
+  fi
+}
+
+install_home_file() {
+  local source="$1"
+  local target="$2"
+
+  if [ -e "$target" ] && ! cmp -s "$source" "$target"; then
+    local backup="$target.local-before-liquid-install"
+    local index=1
+    while [ -e "$backup" ]; do
+      backup="$target.local-before-liquid-install.$index"
+      index=$((index + 1))
+    done
+    run mv "$target" "$backup"
+  fi
+
+  run install -m 0644 "$source" "$target"
+}
+
+install_system() {
+  local assume_yes=0
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      -y|--yes)
+        assume_yes=1
+        shift
+        ;;
+      -h|--help)
+        cat <<'EOF'
+Usage: liquid install-system [--yes]
+
+Install this repo checkout as the Pi runtime:
+- install /usr/local/bin/liquid as a thin shim into this checkout
+- install/update the liquid-renderer systemd unit
+- install the Liquid zsh loader files
+- remove old split helper commands and ~/liquid-control
+EOF
+        exit 0
+        ;;
+      *)
+        echo "Unknown option for install-system: $1" >&2
+        exit 2
+        ;;
+    esac
+  done
+
+  need_repo
+
+  if [ "$(id -u)" -eq 0 ]; then
+    echo "Run this as the normal Pi user, not with sudo. The command uses sudo only where needed." >&2
+    exit 1
+  fi
+
+  if ! command -v sudo >/dev/null 2>&1; then
+    echo "sudo is required for installing /usr/local/bin/liquid and the systemd unit." >&2
+    exit 1
+  fi
+
+  if ! command -v systemctl >/dev/null 2>&1; then
+    echo "systemctl is required; this installer is for the Raspberry Pi OS image runtime." >&2
+    exit 1
+  fi
+
+  if [ ! -f "$repo_dir/image/files/usr/local/bin/liquid" ]; then
+    echo "Missing baked liquid shim source in the repo checkout." >&2
+    exit 1
+  fi
+
+  if [ ! -f "$repo_dir/image/files/home/artist/.zshrc" ] ||
+    [ ! -f "$repo_dir/image/files/home/artist/.liquid-shell.zsh" ]; then
+    echo "Missing baked zsh loader sources in the repo checkout." >&2
+    exit 1
+  fi
+
+  if [ "$assume_yes" -eq 0 ]; then
+    cat <<EOF
+This will install/update the Liquid Pi runtime from:
+  $repo_dir
+
+It will:
+- install /usr/local/bin/liquid as the only user-facing runtime command
+- install/update /etc/systemd/system/liquid-renderer.service
+- install ~/.zshrc and ~/.liquid-shell.zsh so shell aliases load from this repo
+- build the terminal renderer if needed
+- stop/re-enable the liquid-renderer service
+- remove old helper commands and ~/liquid-control
+
+It will keep:
+- this Git checkout
+- Wi-Fi, Bluetooth, SSH, and system settings
+- local renderer settings in $config_file
+EOF
+
+    if [ ! -t 0 ]; then
+      echo "Re-run with --yes to approve non-interactively." >&2
+      exit 1
+    fi
+
+    printf 'Continue? [y/N] '
+    local answer
+    read -r answer
+    case "${answer,,}" in
+      y|yes) ;;
+      *)
+        echo "No changes made."
+        exit 0
+        ;;
+    esac
+  fi
+
+  if [ ! -f "$config_file" ] && [ -f "$HOME/liquid-control/settings.env" ]; then
+    run mkdir -p "$config_dir"
+    run cp "$HOME/liquid-control/settings.env" "$config_file"
+  else
+    ensure_config_file
+  fi
+
+  ensure_terminal_binary
+
+  local user group service_file
+  user="$(id -un)"
+  group="$(id -gn)"
+  service_file="$(mktemp)"
+
+  cat >"$service_file" <<EOF
+[Unit]
+Description=Start Liquid terminal renderer in tmux
+After=local-fs.target liquid-grow-rootfs.service
+ConditionPathExists=$terminal_bin
+
+[Service]
+Type=oneshot
+User=$user
+Group=$group
+WorkingDirectory=$HOME
+Environment=LIQUID_NO_FASTFETCH=1
+ExecStart=/usr/local/bin/liquid start
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  run sudo install -m 0755 "$repo_dir/image/files/usr/local/bin/liquid" /usr/local/bin/liquid
+  run sudo install -m 0644 "$service_file" /etc/systemd/system/liquid-renderer.service
+  run rm -f "$service_file"
+  install_home_file "$repo_dir/image/files/home/artist/.zshrc" "$HOME/.zshrc"
+  install_home_file "$repo_dir/image/files/home/artist/.liquid-shell.zsh" "$HOME/.liquid-shell.zsh"
+  run_optional tmux kill-session -t "$session"
+  run_optional sudo systemctl stop liquid-renderer.service
+  run sudo rm -f \
+    /usr/local/bin/liquid-run-terminal \
+    /usr/local/bin/liquid-start \
+    /usr/local/bin/liquid-restart \
+    /usr/local/bin/liquid-update \
+    /usr/local/bin/liquid-bluetooth-keyboard \
+    /usr/local/sbin/liquid-bootstrap \
+    /usr/local/sbin/liquid-doctor
+  run rm -rf "$HOME/liquid-control"
+  run sudo systemctl daemon-reload
+  run sudo systemctl enable liquid-renderer.service
+
+  cat <<'EOF'
+
+Liquid system runtime is installed.
+
+Next:
+  zconf
+  liquid
+EOF
+}
+
 run_bluetooth() {
   exec "$repo_dir/scripts/bluetooth-keyboard.sh" "$@"
 }
@@ -269,7 +458,7 @@ show_menu() {
     choice="$(
       dialog --stdout --clear \
         --title "Liquid" \
-        --menu "Choose an action" 17 70 9 \
+        --menu "Choose an action" 19 74 10 \
         setup "Renderer setup/settings" \
         start "Start renderer in tmux" \
         attach "Attach to renderer tmux" \
@@ -278,6 +467,7 @@ show_menu() {
         update "Pull repo and rebuild renderer" \
         bluetooth "Pair/connect Bluetooth keyboard" \
         doctor "Run diagnostics" \
+        install-system "Install/update Pi system runtime" \
         quit "Quit"
     )" || exit 0
     clear || true
@@ -293,6 +483,7 @@ Liquid
 6. Pull repo and rebuild renderer
 7. Pair/connect Bluetooth keyboard
 8. Run diagnostics
+9. Install/update Pi system runtime
 0. Quit
 
 EOF
@@ -307,6 +498,7 @@ EOF
       6) choice="update" ;;
       7) choice="bluetooth" ;;
       8) choice="doctor" ;;
+      9) choice="install-system" ;;
       0) choice="quit" ;;
     esac
   fi
@@ -350,6 +542,9 @@ dispatch() {
       ;;
     doctor)
       run_doctor "$@"
+      ;;
+    install-system|install|migrate)
+      install_system "$@"
       ;;
     quit|exit)
       exit 0

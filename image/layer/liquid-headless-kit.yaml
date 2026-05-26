@@ -190,8 +190,7 @@ mmdebstrap:
         1. The local console auto-logs in as artist.
         2. Set your own password with: sudo passwd artist
         3. Join Wi-Fi with: sudo nmtui
-        4. Pair a Bluetooth keyboard with: liquid bluetooth
-        5. Inspect Wi-Fi/Bluetooth/SSH with: liquid doctor
+        4. Open the Liquid runtime menu with: liquid
 
       Dev tools:
         git, gh, cargo, rustc, rustfmt, clippy, zsh, fzf, zoxide,
@@ -201,12 +200,8 @@ mmdebstrap:
         ~/liquid contains the baked Git checkout.
         Local renderer settings live in ~/liquid/.liquid/settings.env.
         The renderer starts detached in tmux session: liquid.
-        Open the runtime menu with: liquid
-        Attach with: liquid attach
-        Restart after settings changes with: liquid restart
-
-      Bluetooth:
-        liquid bluetooth
+        The liquid menu handles renderer setup/control, Bluetooth, updates,
+        and diagnostics.
       EOF
     - $BDEBSTRAP_HOOKS/enable-units "$1" ssh NetworkManager avahi-daemon bluetooth hciuart liquid-grow-rootfs liquid-renderer
     - $BDEBSTRAP_HOOKS/disable-units "$1" iwd systemd-networkd
