@@ -101,22 +101,15 @@ Open the runtime menu:
 liquid
 ```
 
-Useful direct commands are subcommands of that one entrypoint:
+The menu exposes setup, start, attach, restart, stop, update, Bluetooth, and
+diagnostics. Use direct subcommands only when scripting or debugging, for
+example `liquid setup`, `liquid restart`, or `liquid attach`.
 
-```sh
-liquid setup
-liquid start
-liquid attach
-liquid restart
-liquid stop
-liquid update
-liquid bluetooth
-liquid doctor
-```
-
-The setup screen starts immediately if you press Enter. Move through values with
-the arrow keys, use left/right to adjust them, and choose `Save + start` to write
-`~/liquid/.liquid/settings.env` before launching.
+The setup screen starts the renderer immediately if you press Enter. Move
+through values with the arrow keys, use left/right to adjust them, and choose
+`Save + start` to write `~/liquid/.liquid/settings.env` before launching. The
+default runtime settings are 500 particles, 60 FPS, auto-size on, deep-blue
+color, and no changing status line.
 
 The renderer hides the changing status line by default to avoid flicker in tmux
 and SSH terminals. Enable it only when debugging with `--status` or
@@ -130,57 +123,31 @@ Update intentionally after Wi-Fi is connected:
 liquid update
 ```
 
-On an already-flashed Pi that does not yet have `/usr/local/bin/liquid`, run the
-repo entrypoint directly after pulling:
+On a fresh image, these pieces are already baked in:
+
+- `/usr/local/bin/liquid`
+- `liquid-renderer.service`
+- zsh/Oh My Zsh shell loader files
+- the repo checkout at `~/liquid`
+- the prebuilt terminal renderer
+
+There is no extra systemd or command installation step after flashing.
+
+On an older already-flashed Pi, migrate once from the repo checkout:
 
 ```sh
 cd ~/liquid
 git pull --ff-only
-scripts/liquid
+scripts/liquid install-system
+zconf
+liquid
 ```
 
-Install the thin command shim only if you want to type `liquid` instead of
-`~/liquid/scripts/liquid` on that older image:
-
-```sh
-sudo install -m 0755 ~/liquid/image/files/usr/local/bin/liquid /usr/local/bin/liquid
-```
-
-If that Pi already has an older `liquid-renderer.service`, point it at the new
-single entrypoint:
-
-```sh
-sudo tee /etc/systemd/system/liquid-renderer.service >/dev/null <<'EOF'
-[Unit]
-Description=Start Liquid terminal renderer in tmux
-After=local-fs.target liquid-grow-rootfs.service
-ConditionPathExists=/home/artist/liquid/code/target/release/examples/terminal
-
-[Service]
-Type=oneshot
-User=artist
-Group=artist
-WorkingDirectory=/home/artist
-Environment=LIQUID_NO_FASTFETCH=1
-ExecStart=/usr/local/bin/liquid start
-RemainAfterExit=yes
-
-[Install]
-WantedBy=multi-user.target
-EOF
-sudo systemctl daemon-reload
-```
-
-Older flashed images may still have the previous helper commands and
-`~/liquid-control` directory. They are no longer part of the runtime model; after
-installing `/usr/local/bin/liquid`, remove them if you want the Pi to match the
-current layout:
-
-```sh
-rm -rf ~/liquid-control
-sudo rm -f /usr/local/bin/liquid-run-terminal /usr/local/bin/liquid-start /usr/local/bin/liquid-restart /usr/local/bin/liquid-update /usr/local/bin/liquid-bluetooth-keyboard
-sudo rm -f /usr/local/sbin/liquid-bootstrap /usr/local/sbin/liquid-doctor
-```
+`install-system` prints the system changes it will make and asks before changing
+anything. It installs the single command shim, writes the renderer systemd unit,
+loads the repo-backed shell setup, removes the old split helper commands, and
+removes `~/liquid-control`. It keeps Wi-Fi, Bluetooth pairings, SSH setup, the
+Git checkout, and local renderer settings.
 
 There is no baked password. Set your own password locally before relying on SSH
 password login:

@@ -43,7 +43,7 @@ impl Config {
             color: ColorTheme::Blue,
             gravity_spin: 1.0,
             particles: 2_000,
-            fps: 30,
+            fps: 60,
             frames: None,
             show_status: false,
         }
@@ -299,7 +299,7 @@ impl DensityGrid {
         output.push_str("\x1b[0m");
         if config.show_status {
             output.push_str(&format!(
-                "fluid_sim terminal | {}x{} | particles {} | fps {} | gravity spin {:.2} | color {:?} | frame {} | Q/Esc exits\x1b[K\n",
+                "fluid_sim terminal | {}x{} | particles {} | fps {} | gravity spin {:.2} | color {:?} | frame {} | Q/Esc exits\x1b[K\r\n",
                 self.cols,
                 self.rows,
                 config.particles,
@@ -327,11 +327,72 @@ impl DensityGrid {
             }
             output.push_str("\x1b[0m\x1b[K");
             if row + 1 < self.rows {
-                output.push('\n');
+                output.push_str("\r\n");
             }
         }
 
         output
+    }
+
+    fn write_frame(
+        &self,
+        stdout: &mut io::Stdout,
+        frame: usize,
+        config: &Config,
+    ) -> Result<(), String> {
+        queue!(stdout, ResetColor, SetAttribute(Attribute::Reset))
+            .map_err(|err| err.to_string())?;
+
+        let mut row_offset = 0;
+        if config.show_status {
+            queue!(
+                stdout,
+                MoveTo(0, 0),
+                Print(format!(
+                    "fluid_sim terminal | {}x{} | particles {} | fps {} | gravity spin {:.2} | color {:?} | frame {} | Q/Esc exits",
+                    self.cols,
+                    self.rows,
+                    config.particles,
+                    config.fps,
+                    config.gravity_spin,
+                    config.color,
+                    frame
+                )),
+                Clear(ClearType::UntilNewLine)
+            )
+            .map_err(|err| err.to_string())?;
+            row_offset = 1;
+        }
+
+        for row in 0..self.rows {
+            queue!(stdout, MoveTo(0, (row + row_offset) as u16)).map_err(|err| err.to_string())?;
+            let mut current_color = None;
+            for col in 0..self.cols {
+                let density = self.cells[row * self.cols + col];
+                let color = cell_color(config.color, density);
+                if color != current_color {
+                    if let Some((red, green, blue)) = color {
+                        queue!(
+                            stdout,
+                            SetForegroundColor(Color::Rgb {
+                                r: red,
+                                g: green,
+                                b: blue
+                            })
+                        )
+                        .map_err(|err| err.to_string())?;
+                    } else {
+                        queue!(stdout, ResetColor).map_err(|err| err.to_string())?;
+                    }
+                    current_color = color;
+                }
+                queue!(stdout, Print(density_char(density))).map_err(|err| err.to_string())?;
+            }
+            queue!(stdout, ResetColor, Clear(ClearType::UntilNewLine))
+                .map_err(|err| err.to_string())?;
+        }
+
+        Ok(())
     }
 }
 
@@ -368,11 +429,12 @@ pub fn run_from_env() -> Result<(), String> {
             particles.board_height,
         );
         if render_guard.active {
-            queue!(stdout, MoveTo(0, 0)).map_err(|err| err.to_string())?;
+            grid.write_frame(&mut stdout, frame, &config)?;
+        } else {
+            stdout
+                .write_all(grid.render(frame, &config).as_bytes())
+                .map_err(|err| err.to_string())?;
         }
-        stdout
-            .write_all(grid.render(frame, &config).as_bytes())
-            .map_err(|err| err.to_string())?;
         stdout.flush().map_err(|err| err.to_string())?;
 
         gravity_time += delta * config.gravity_spin;
@@ -844,7 +906,7 @@ Options:\n\
   --gravity-spin N\n\
                   Gravity rotation speed multiplier [default: 1.0]\n\
   --particles N   Particle count [default: 2000]\n\
-  --fps N         Target frames per second [default: 30]\n\
+  --fps N         Target frames per second [default: 60]\n\
   --frames N      Stop after N frames, useful for smoke tests\n\
   --setup         Open the interactive setup screen before rendering\n\
   --status        Show a changing status line above the animation\n\

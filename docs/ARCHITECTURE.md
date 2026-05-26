@@ -30,9 +30,9 @@ The installed command is a thin shim:
 ```
 
 All operator actions go through that one command. Running `liquid` without
-arguments opens a terminal menu; direct subcommands exist for scriptable actions
-such as `liquid setup`, `liquid restart`, `liquid bluetooth`, and
-`liquid doctor`.
+arguments opens a terminal menu for setup, renderer control, updates, Bluetooth,
+and diagnostics. Direct subcommands exist for scriptable actions such as
+`liquid setup`, `liquid restart`, `liquid bluetooth`, and `liquid doctor`.
 
 Renderer settings are local installation state stored inside the checkout at:
 
@@ -42,6 +42,20 @@ Renderer settings are local installation state stored inside the checkout at:
 
 The `.liquid/` directory is ignored by git. The setup UI writes this file, and
 normal `git pull` updates do not replace it.
+
+Fresh images bake the command shim, systemd unit, shell loader files, repo
+checkout, and prebuilt renderer into the filesystem. Older already-flashed Pis
+can migrate to the same layout with one repo-owned action:
+
+```sh
+cd ~/liquid
+git pull --ff-only
+scripts/liquid install-system
+```
+
+That migration removes the old split helper commands and `~/liquid-control`,
+but keeps the Git checkout, local renderer settings, Wi-Fi, Bluetooth pairings,
+SSH setup, and other system state.
 
 ## Boot Behavior
 

@@ -24,17 +24,21 @@ liquid attach
 liquid update
 ```
 
-On an older already-flashed Pi that does not yet have `/usr/local/bin/liquid`,
-run the repo entrypoint directly:
+Fresh images bake the single `liquid` command, renderer systemd unit, shell
+loader files, repo checkout, and prebuilt renderer. On an older already-flashed
+Pi, migrate once from the repo checkout:
 
 ```sh
 cd ~/liquid
 git pull --ff-only
-scripts/liquid
+scripts/liquid install-system
+zconf
+liquid
 ```
 
-Future images install `/usr/local/bin/liquid` as a thin shim into
-`~/liquid/scripts/liquid`; the logic remains in the repo checkout.
+The installer prints what it will change before privileged operations. It
+removes the previous split runtime helpers and `~/liquid-control`; the runtime
+logic remains in `~/liquid/scripts/liquid`.
 
 ## Validation Checkpoints
 
