@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+stamp=/var/lib/liquid/rootfs-expanded
+
+if [ -e "$stamp" ]; then
+  exit 0
+fi
+
+if ! command -v raspi-config >/dev/null 2>&1; then
+  echo "raspi-config is missing; cannot expand root filesystem." >&2
+  exit 1
+fi
+
+mkdir -p /var/lib/liquid
+
+echo "Expanding root partition to fill the flashed card."
+if raspi-config nonint do_expand_rootfs; then
+  touch "$stamp"
+else
+  echo "Root filesystem expansion failed; will retry on the next boot." >&2
+  exit 1
+fi
+
+echo "Rebooting once so the expanded root filesystem is mounted cleanly."
+systemctl disable liquid-grow-rootfs.service >/dev/null 2>&1 || true
+systemctl reboot
