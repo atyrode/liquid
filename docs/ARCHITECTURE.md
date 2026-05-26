@@ -97,7 +97,9 @@ library module through `fluid_sim::particle::Particles`.
 
 The terminal renderer maps the simulation world into a fixed or auto-sized grid,
 accumulates nearby particles into density cells, and converts those cells to
-terminal characters plus optional color.
+terminal characters plus optional color. Color themes use standard ANSI
+foreground colors instead of 24-bit RGB so the Pi console, SSH terminals, and
+tmux do not misinterpret color sequences as background colors.
 
 Interactive rendering uses crossterm to:
 

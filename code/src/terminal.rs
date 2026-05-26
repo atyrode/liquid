@@ -316,8 +316,8 @@ impl DensityGrid {
                 let density = self.cells[row * self.cols + col];
                 let color = cell_color(config.color, density);
                 if color != current_color {
-                    if let Some((red, green, blue)) = color {
-                        output.push_str(&format!("\x1b[38;2;{red};{green};{blue}m"));
+                    if let Some(color) = color {
+                        output.push_str(color.sgr());
                     } else {
                         output.push_str("\x1b[0m");
                     }
@@ -371,16 +371,9 @@ impl DensityGrid {
                 let density = self.cells[row * self.cols + col];
                 let color = cell_color(config.color, density);
                 if color != current_color {
-                    if let Some((red, green, blue)) = color {
-                        queue!(
-                            stdout,
-                            SetForegroundColor(Color::Rgb {
-                                r: red,
-                                g: green,
-                                b: blue
-                            })
-                        )
-                        .map_err(|err| err.to_string())?;
+                    if let Some(color) = color {
+                        queue!(stdout, SetForegroundColor(color.crossterm()))
+                            .map_err(|err| err.to_string())?;
                     } else {
                         queue!(stdout, ResetColor).map_err(|err| err.to_string())?;
                     }
@@ -863,21 +856,62 @@ fn density_char(density: f32) -> char {
     PALETTE[index] as char
 }
 
-fn cell_color(theme: ColorTheme, density: f32) -> Option<(u8, u8, u8)> {
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+enum CellColor {
+    DarkBlue,
+    Blue,
+    DarkCyan,
+    Cyan,
+    White,
+}
+
+impl CellColor {
+    fn sgr(self) -> &'static str {
+        match self {
+            Self::DarkBlue => "\x1b[34m",
+            Self::Blue => "\x1b[94m",
+            Self::DarkCyan => "\x1b[36m",
+            Self::Cyan => "\x1b[96m",
+            Self::White => "\x1b[97m",
+        }
+    }
+
+    fn crossterm(self) -> Color {
+        match self {
+            Self::DarkBlue => Color::DarkBlue,
+            Self::Blue => Color::Blue,
+            Self::DarkCyan => Color::DarkCyan,
+            Self::Cyan => Color::Cyan,
+            Self::White => Color::White,
+        }
+    }
+}
+
+fn cell_color(theme: ColorTheme, density: f32) -> Option<CellColor> {
     if theme == ColorTheme::Mono || density <= 0.0 {
         return None;
     }
 
     let intensity = (density / DENSITY_FULL).clamp(0.0, 1.0);
-    let mix = |low: u8, high: u8| -> u8 {
-        (low as f32 + (high as f32 - low as f32) * intensity).round() as u8
-    };
+    let band = (intensity * 3.0).ceil() as usize;
 
     Some(match theme {
         ColorTheme::Mono => unreachable!(),
-        ColorTheme::Blue => (mix(20, 110), mix(70, 190), mix(150, 255)),
-        ColorTheme::Cyan => (mix(10, 90), mix(110, 245), mix(140, 255)),
-        ColorTheme::DeepBlue => (mix(0, 55), mix(20, 110), mix(90, 230)),
+        ColorTheme::Blue => match band {
+            0 | 1 => CellColor::DarkBlue,
+            2 => CellColor::Blue,
+            _ => CellColor::Cyan,
+        },
+        ColorTheme::Cyan => match band {
+            0 | 1 => CellColor::DarkCyan,
+            2 => CellColor::Cyan,
+            _ => CellColor::White,
+        },
+        ColorTheme::DeepBlue => match band {
+            0 | 1 => CellColor::DarkBlue,
+            2 => CellColor::Blue,
+            _ => CellColor::Blue,
+        },
     })
 }
 
@@ -888,6 +922,29 @@ fn terminal_grid_size(show_status: bool) -> Option<GridSize> {
     let rows = usize::from(rows).saturating_sub(status_rows).max(1);
 
     Some(GridSize { cols, rows })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn color_rendering_uses_portable_foreground_sgr() {
+        let mut grid = DensityGrid::new(2, 1);
+        grid.add_density(0, 0, 1.0);
+        grid.add_density(1, 0, DENSITY_FULL);
+
+        let config = Config {
+            color: ColorTheme::DeepBlue,
+            ..Config::defaults()
+        };
+        let output = grid.render(0, &config);
+
+        assert!(output.contains("\x1b[34m"));
+        assert!(output.contains("\x1b[94m"));
+        assert!(!output.contains("\x1b[38;2;"));
+        assert!(!output.contains("\x1b[48;"));
+    }
 }
 
 fn print_help() {
