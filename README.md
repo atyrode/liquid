@@ -21,8 +21,14 @@ The custom image includes:
 - `rfkill`
 - `iw`
 - `raspi-config`
+- `git`, `gh`, `build-essential`, `pkg-config`
+- `cargo`, `rustc`, `rustfmt`, `rust-clippy`
+- `zsh`, `zsh-autosuggestions`, `zsh-syntax-highlighting`
+- `tree`, `btop`, `bat`, `fd-find`, `fastfetch`, `fzf`, `ripgrep`, `tmux`, `zoxide`
+- Python basics: `python3`, `python3-venv`, `python3-pip`, `python3-pil`
 - `liquid-bootstrap`
 - `liquid-doctor`
+- `liquid-grow-rootfs`
 
 The image does not include Wi-Fi credentials, SSH private keys, Bluetooth pairing
 secrets, or a desktop environment.
@@ -36,6 +42,11 @@ in on the local console:
 user: liquid
 password: none; tty1 auto-login is enabled
 ```
+
+On first boot, the image may reboot once while `liquid-grow-rootfs` expands the
+root partition to fill the flashed card. The image boots by filesystem label
+instead of `/dev/disk/by-slot/system`, so normal partition expansion should not
+break root device discovery.
 
 There is no baked password. Set your own password locally before relying on SSH
 password login:
@@ -59,6 +70,11 @@ or:
 ```sh
 sudo raspi-config
 ```
+
+Wi-Fi credentials are intentionally not committed to this repo. For a nearly
+zero-touch flash, use Raspberry Pi Imager's OS customization to write the Wi-Fi
+network and password at flash time, or add them locally on the Pi with `nmtui`.
+Keep those values out of git and out of shared terminal output.
 
 After Wi-Fi is connected, SSH from your workstation:
 
@@ -144,6 +160,12 @@ The workflow pins `rpi-image-gen` to `v2.6.0` for reproducible builds.
 CI caches that pinned `rpi-image-gen` checkout between runs; it does not cache
 generated image work directories or release assets.
 
+The repo includes `image/pre-image.sh`, which patches the pinned
+`image-rpios` setup script during image generation so `/etc/fstab` and
+`cmdline.txt` use `/dev/disk/by-label/ROOT` and `/dev/disk/by-label/BOOT`
+instead of slot symlinks. This avoids the root-device boot failure seen after
+root partition expansion.
+
 Run it manually from GitHub Actions when needed. Optionally provide a release tag
 such as:
 
@@ -159,8 +181,10 @@ CI checks the operator scripts and the baked copies:
 
 ```sh
 bash -n scripts/*.sh
+bash -n image/pre-image.sh
 bash -n image/files/usr/local/sbin/liquid-bootstrap
 bash -n image/files/usr/local/sbin/liquid-doctor
+bash -n image/files/usr/local/sbin/liquid-grow-rootfs
 cmp scripts/bootstrap-pi.sh image/files/usr/local/sbin/liquid-bootstrap
 cmp scripts/pi-doctor.sh image/files/usr/local/sbin/liquid-doctor
 shellcheck scripts/*.sh image/files/usr/local/sbin/liquid-*

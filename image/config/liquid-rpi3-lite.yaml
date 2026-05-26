@@ -7,7 +7,7 @@ device:
 image:
   layer: image-rpios
   boot_part_size: 200%
-  root_part_size: 300%
+  root_part_size: 8G
   name: liquid-rpi3-lite
   compression: zstd
 
