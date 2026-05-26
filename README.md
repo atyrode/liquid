@@ -38,9 +38,10 @@ The custom image includes:
 - `liquid-grow-rootfs`
 
 The shell setup ports the portable parts of `atyrode/nix-dotfiles`: Oh My Zsh,
-aliases, `zoxide`, `fzf`, tmux helpers, Git helper, and lightweight Python venv
-helpers. Nix/Home Manager commands such as `zconf` are intentionally not baked
-in because the Pi image does not use Nix as its system configuration manager.
+aliases, `zoxide`, `fzf`, tmux helpers, Git helper, Python venv helpers, and a
+non-Nix `zconf` that restarts the login shell. Nix/Home Manager rebuild logic is
+not baked in because the Pi image does not use Nix as its system configuration
+manager.
 
 The image does not include Wi-Fi credentials, SSH private keys, Bluetooth pairing
 secrets, or a desktop environment.
@@ -53,6 +54,13 @@ in on the local console:
 ```text
 user: artist
 password: none; tty1 auto-login is enabled
+```
+
+The image defaults to a US console keyboard layout. If punctuation keys such as
+`~` do not match your physical keyboard, change the layout locally with:
+
+```sh
+sudo raspi-config
 ```
 
 On first boot, the image may reboot once while `liquid-grow-rootfs` expands the
@@ -136,6 +144,39 @@ ssh artist@dogpi.local
 
 If mDNS does not resolve, use the IP shown by `hostname -I` on the Pi or by your
 router.
+
+### SSH Host Keys After Reflashing
+
+Every fresh flash generates a fresh SSH host identity on the Pi. Your workstation
+may then refuse `ssh artist@dogpi.local` because it remembers the previous Pi
+identity for the same hostname. That warning is expected after reflashing.
+
+The safe local fix is to forget the old key before reconnecting:
+
+```sh
+scripts/forget-pi-host-key.sh
+ssh artist@dogpi.local
+```
+
+If you previously connected by IP address, remove that entry too:
+
+```sh
+scripts/forget-pi-host-key.sh dogpi.local 192.168.1.42
+```
+
+For a disposable trusted LAN only, you can opt out of host-key persistence for
+this one host in `~/.ssh/config`:
+
+```sshconfig
+Host dogpi.local dogpi
+  User artist
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+```
+
+That convenience disables SSH's normal man-in-the-middle protection for this
+host. The image does not bake static SSH host private keys because that would
+give every public image flash the same server identity.
 
 ## Download A Release Image
 
@@ -243,6 +284,7 @@ bash -n image/files/usr/local/bin/liquid-update
 bash -n image/files/usr/local/sbin/liquid-bootstrap
 bash -n image/files/usr/local/sbin/liquid-doctor
 bash -n image/files/usr/local/sbin/liquid-grow-rootfs
+zsh -n image/files/home/artist/.zshrc image/files/home/artist/.liquid-shell.zsh image/files/home/artist/.liquid-shell.d/*.zsh
 cmp scripts/bootstrap-pi.sh image/files/usr/local/sbin/liquid-bootstrap
 cmp scripts/pi-doctor.sh image/files/usr/local/sbin/liquid-doctor
 cargo check --manifest-path code/Cargo.toml --no-default-features --example terminal
