@@ -167,3 +167,29 @@ shellcheck scripts/*.sh image/files/usr/local/sbin/liquid-*
 ```
 
 `shellcheck` is optional locally, but CI runs it when available.
+
+Run the terminal renderer prototype without touching the main windowed
+simulation:
+
+```sh
+cd code
+cargo run --example terminal -- --auto-size
+```
+
+Choose a color theme with `--color`:
+
+```sh
+cargo run --example terminal -- --auto-size --color deep-blue
+```
+
+Adjust the rotating gravity speed with `--gravity-spin`:
+
+```sh
+cargo run --example terminal -- --auto-size --gravity-spin 3
+```
+
+For a bounded smoke test that exits on its own:
+
+```sh
+cargo run --example terminal -- --cols 40 --rows 20 --particles 500 --color cyan --gravity-spin 0 --frames 5
+```
