@@ -566,6 +566,12 @@ enum SetupItem {
     Quit,
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+enum SetupStep {
+    Fine,
+    Rough,
+}
+
 const SETUP_ITEMS: &[SetupItem] = &[
     SetupItem::Start,
     SetupItem::Particles,
@@ -631,10 +637,26 @@ fn run_setup(mut config: Config) -> Result<Option<Config>, String> {
             KeyCode::Up => selected = selected.saturating_sub(1),
             KeyCode::Down => selected = (selected + 1).min(SETUP_ITEMS.len() - 1),
             KeyCode::Left | KeyCode::Char('-') => {
-                adjust_setup_value(&mut config, SETUP_ITEMS[selected], -1)
+                let step = if key.modifiers.contains(KeyModifiers::CONTROL) {
+                    SetupStep::Rough
+                } else {
+                    SetupStep::Fine
+                };
+                adjust_setup_value(&mut config, SETUP_ITEMS[selected], -1, step)
             }
             KeyCode::Right | KeyCode::Char('+') => {
-                adjust_setup_value(&mut config, SETUP_ITEMS[selected], 1)
+                let step = if key.modifiers.contains(KeyModifiers::CONTROL) {
+                    SetupStep::Rough
+                } else {
+                    SetupStep::Fine
+                };
+                adjust_setup_value(&mut config, SETUP_ITEMS[selected], 1, step)
+            }
+            KeyCode::PageDown => {
+                adjust_setup_value(&mut config, SETUP_ITEMS[selected], -1, SetupStep::Rough)
+            }
+            KeyCode::PageUp => {
+                adjust_setup_value(&mut config, SETUP_ITEMS[selected], 1, SetupStep::Rough)
             }
             KeyCode::Enter => match SETUP_ITEMS[selected] {
                 SetupItem::Start => return Ok(Some(config)),
@@ -644,7 +666,7 @@ fn run_setup(mut config: Config) -> Result<Option<Config>, String> {
                 }
                 SetupItem::Quit => return Ok(None),
                 SetupItem::Color | SetupItem::Charset | SetupItem::Status | SetupItem::AutoSize => {
-                    adjust_setup_value(&mut config, SETUP_ITEMS[selected], 1);
+                    adjust_setup_value(&mut config, SETUP_ITEMS[selected], 1, SetupStep::Fine);
                 }
                 _ => {}
             },
@@ -666,7 +688,7 @@ fn render_setup(stdout: &mut io::Stdout, config: &Config, selected: usize) -> Re
         SetForegroundColor(Color::Cyan),
         Print("Liquid terminal renderer\n"),
         ResetColor,
-        Print("Enter starts. Up/down moves. Left/right changes values. S saves and starts. Q quits.\n\n")
+        Print("Enter starts. Up/down moves. Left/right changes values. Ctrl+left/right or PgUp/PgDn jumps. S saves and starts. Q quits.\n\n")
     )
     .map_err(|err| err.to_string())?;
 
@@ -754,13 +776,19 @@ fn render_setup_row(
     .map_err(|err| err.to_string())
 }
 
-fn adjust_setup_value(config: &mut Config, item: SetupItem, direction: i32) {
+fn adjust_setup_value(config: &mut Config, item: SetupItem, direction: i32, step: SetupStep) {
     match item {
         SetupItem::Particles => {
-            config.particles = adjust_usize(config.particles, direction, 100, 20_000, 100);
+            config.particles = adjust_usize(
+                config.particles,
+                direction,
+                100,
+                20_000,
+                step.usize(100, 1_000),
+            );
         }
         SetupItem::Fps => {
-            config.fps = adjust_u64(config.fps, direction, 1, 120, 1);
+            config.fps = adjust_u64(config.fps, direction, 1, 120, step.u64(1, 10));
         }
         SetupItem::Color => {
             config.color = if direction >= 0 {
@@ -777,17 +805,41 @@ fn adjust_setup_value(config: &mut Config, item: SetupItem, direction: i32) {
             };
         }
         SetupItem::GravitySpin => {
-            config.gravity_spin = (config.gravity_spin + direction as f64 * 0.1).clamp(-10.0, 10.0);
+            config.gravity_spin =
+                (config.gravity_spin + direction as f64 * step.f64(0.1, 1.0)).clamp(-10.0, 10.0);
         }
         SetupItem::Status => config.show_status = !config.show_status,
         SetupItem::AutoSize => config.auto_size = !config.auto_size,
         SetupItem::Cols => {
-            config.cols = adjust_usize(config.cols, direction, 1, 300, 5);
+            config.cols = adjust_usize(config.cols, direction, 1, 300, step.usize(1, 10));
         }
         SetupItem::Rows => {
-            config.rows = adjust_usize(config.rows, direction, 1, 200, 2);
+            config.rows = adjust_usize(config.rows, direction, 1, 200, step.usize(1, 10));
         }
         SetupItem::Start | SetupItem::SaveStart | SetupItem::Quit => {}
+    }
+}
+
+impl SetupStep {
+    fn usize(self, fine: usize, rough: usize) -> usize {
+        match self {
+            Self::Fine => fine,
+            Self::Rough => rough,
+        }
+    }
+
+    fn u64(self, fine: u64, rough: u64) -> u64 {
+        match self {
+            Self::Fine => fine,
+            Self::Rough => rough,
+        }
+    }
+
+    fn f64(self, fine: f64, rough: f64) -> f64 {
+        match self {
+            Self::Fine => fine,
+            Self::Rough => rough,
+        }
     }
 }
 
@@ -1085,6 +1137,26 @@ LIQUID_LED_ORIGIN=bottom-left
                 "LIQUID_LED_ORIGIN=bottom-left".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn setup_adjustment_supports_fine_and_rough_steps() {
+        let mut config = Config::defaults();
+
+        adjust_setup_value(&mut config, SetupItem::Particles, 1, SetupStep::Fine);
+        assert_eq!(config.particles, 2_100);
+
+        adjust_setup_value(&mut config, SetupItem::Particles, 1, SetupStep::Rough);
+        assert_eq!(config.particles, 3_100);
+
+        adjust_setup_value(&mut config, SetupItem::Cols, 1, SetupStep::Fine);
+        assert_eq!(config.cols, 101);
+
+        adjust_setup_value(&mut config, SetupItem::Cols, 1, SetupStep::Rough);
+        assert_eq!(config.cols, 111);
+
+        adjust_setup_value(&mut config, SetupItem::GravitySpin, -1, SetupStep::Rough);
+        assert_eq!(config.gravity_spin, 0.0);
     }
 }
 

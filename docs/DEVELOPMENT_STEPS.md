@@ -14,8 +14,7 @@
   the `led-matrix` feature.
 - The renderer supports colors, selectable character sets, gravity spin,
   fixed-size grids, auto-size grids, bounded frame counts for smoke tests, and
-  an interactive setup screen. The setup screen is owned by `scripts/liquid` so
-  it uses the same `dialog` or numbered-menu style as the main runtime menu.
+  an interactive setup screen.
 
 ## Current Runtime Workflow
 
@@ -31,6 +30,10 @@ liquid restart
 liquid attach
 liquid update
 ```
+
+`liquid update` is interactive on the Pi: it fetches from origin, lets the
+operator choose a branch, then pulls and rebuilds. Non-interactive update runs
+keep the previous current-branch behavior.
 
 Fresh images bake the single `liquid` command, renderer systemd unit, shell
 loader files, repo checkout, and prebuilt renderer. On an older already-flashed
