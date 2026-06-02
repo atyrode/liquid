@@ -19,7 +19,15 @@ use std::time::{Duration, Instant};
 const WORLD_WIDTH: f64 = 1080.0;
 const WORLD_HEIGHT: f64 = 1080.0;
 const DENSITY_FULL: f32 = 3.0;
-const PALETTE: &[u8] = b" .:-=+*#%@";
+const CLASSIC_CHARSET: &[char] = &[' ', '.', ':', '-', '=', '+', '*', '#', '%', '@'];
+const DOT_CHARSET: &[char] = &[
+    ' ', '.', '.', ':', ':', '\u{00b7}', '\u{00b7}', '\u{2022}', '\u{2022}', '\u{25cf}',
+];
+const BLOCK_CHARSET: &[char] = &[
+    ' ', '\u{2591}', '\u{2591}', '\u{2592}', '\u{2592}', '\u{2593}', '\u{2593}', '\u{2588}',
+    '\u{2588}', '\u{2588}',
+];
+const SOLID_BLOCK: char = '\u{2588}';
 
 #[derive(Debug, Clone)]
 struct Config {
@@ -27,6 +35,7 @@ struct Config {
     rows: usize,
     auto_size: bool,
     color: ColorTheme,
+    charset: Charset,
     gravity_spin: f64,
     particles: usize,
     fps: u64,
@@ -41,6 +50,7 @@ impl Config {
             rows: 50,
             auto_size: false,
             color: ColorTheme::Blue,
+            charset: Charset::Classic,
             gravity_spin: 1.0,
             particles: 2_000,
             fps: 60,
@@ -70,6 +80,9 @@ impl Config {
                     config.color = ColorTheme::parse(&parse_next::<String>(&mut args, "--color")?)?
                 }
                 "--no-color" => config.color = ColorTheme::Mono,
+                "--charset" => {
+                    config.charset = Charset::parse(&parse_next::<String>(&mut args, "--charset")?)?
+                }
                 "--gravity-spin" => config.gravity_spin = parse_next(&mut args, "--gravity-spin")?,
                 "--particles" => config.particles = parse_next(&mut args, "--particles")?,
                 "--fps" => config.fps = parse_next(&mut args, "--fps")?,
@@ -120,6 +133,7 @@ impl Config {
             "LIQUID_ROWS",
             "LIQUID_AUTO_SIZE",
             "LIQUID_COLOR",
+            "LIQUID_CHARSET",
             "LIQUID_GRAVITY_SPIN",
             "LIQUID_PARTICLES",
             "LIQUID_FPS",
@@ -140,6 +154,7 @@ impl Config {
             "LIQUID_ROWS" => self.rows = parse_setting(value, key)?,
             "LIQUID_AUTO_SIZE" => self.auto_size = parse_bool(value, key)?,
             "LIQUID_COLOR" => self.color = ColorTheme::parse(value)?,
+            "LIQUID_CHARSET" => self.charset = Charset::parse(value)?,
             "LIQUID_GRAVITY_SPIN" => self.gravity_spin = parse_setting(value, key)?,
             "LIQUID_PARTICLES" => self.particles = parse_setting(value, key)?,
             "LIQUID_FPS" => self.fps = parse_setting(value, key)?,
@@ -182,6 +197,73 @@ impl Config {
                 cols: self.cols,
                 rows: self.rows,
             }
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+enum Charset {
+    Classic,
+    Dots,
+    Blocks,
+    Solid,
+}
+
+impl Charset {
+    fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "classic" | "ascii" => Ok(Self::Classic),
+            "dots" | "dot" => Ok(Self::Dots),
+            "blocks" | "block" | "squares" | "square" => Ok(Self::Blocks),
+            "solid" | "full" | "full-block" => Ok(Self::Solid),
+            _ => Err(format!(
+                "unknown charset: {value}; expected classic, dots, blocks, or solid"
+            )),
+        }
+    }
+
+    fn as_arg(self) -> &'static str {
+        match self {
+            Self::Classic => "classic",
+            Self::Dots => "dots",
+            Self::Blocks => "blocks",
+            Self::Solid => "solid",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Classic => "Classic",
+            Self::Dots => "Dots",
+            Self::Blocks => "Blocks",
+            Self::Solid => "Solid block",
+        }
+    }
+
+    fn chars(self) -> &'static [char] {
+        match self {
+            Self::Classic => CLASSIC_CHARSET,
+            Self::Dots => DOT_CHARSET,
+            Self::Blocks => BLOCK_CHARSET,
+            Self::Solid => &[SOLID_BLOCK],
+        }
+    }
+
+    fn next(self) -> Self {
+        match self {
+            Self::Classic => Self::Dots,
+            Self::Dots => Self::Blocks,
+            Self::Blocks => Self::Solid,
+            Self::Solid => Self::Classic,
+        }
+    }
+
+    fn previous(self) -> Self {
+        match self {
+            Self::Classic => Self::Solid,
+            Self::Dots => Self::Classic,
+            Self::Blocks => Self::Dots,
+            Self::Solid => Self::Blocks,
         }
     }
 }
@@ -299,13 +381,14 @@ impl DensityGrid {
         output.push_str("\x1b[0m");
         if config.show_status {
             output.push_str(&format!(
-                "fluid_sim terminal | {}x{} | particles {} | fps {} | gravity spin {:.2} | color {:?} | frame {} | Q/Esc exits\x1b[K\r\n",
+                "fluid_sim terminal | {}x{} | particles {} | fps {} | gravity spin {:.2} | color {} | charset {} | frame {} | Q/Esc exits\x1b[K\r\n",
                 self.cols,
                 self.rows,
                 config.particles,
                 config.fps,
                 config.gravity_spin,
-                config.color,
+                config.color.as_arg(),
+                config.charset.as_arg(),
                 frame
             ));
         }
@@ -323,7 +406,7 @@ impl DensityGrid {
                     }
                     current_color = color;
                 }
-                output.push(density_char(density));
+                output.push(density_char(density, config.charset));
             }
             output.push_str("\x1b[0m\x1b[K");
             if row + 1 < self.rows {
@@ -349,13 +432,14 @@ impl DensityGrid {
                 stdout,
                 MoveTo(0, 0),
                 Print(format!(
-                    "fluid_sim terminal | {}x{} | particles {} | fps {} | gravity spin {:.2} | color {:?} | frame {} | Q/Esc exits",
+                    "fluid_sim terminal | {}x{} | particles {} | fps {} | gravity spin {:.2} | color {} | charset {} | frame {} | Q/Esc exits",
                     self.cols,
                     self.rows,
                     config.particles,
                     config.fps,
                     config.gravity_spin,
-                    config.color,
+                    config.color.as_arg(),
+                    config.charset.as_arg(),
                     frame
                 )),
                 Clear(ClearType::UntilNewLine)
@@ -379,7 +463,8 @@ impl DensityGrid {
                     }
                     current_color = color;
                 }
-                queue!(stdout, Print(density_char(density))).map_err(|err| err.to_string())?;
+                queue!(stdout, Print(density_char(density, config.charset)))
+                    .map_err(|err| err.to_string())?;
             }
             queue!(stdout, ResetColor, Clear(ClearType::UntilNewLine))
                 .map_err(|err| err.to_string())?;
@@ -518,6 +603,7 @@ enum SetupItem {
     Particles,
     Fps,
     Color,
+    Charset,
     GravitySpin,
     Status,
     AutoSize,
@@ -532,6 +618,7 @@ const SETUP_ITEMS: &[SetupItem] = &[
     SetupItem::Particles,
     SetupItem::Fps,
     SetupItem::Color,
+    SetupItem::Charset,
     SetupItem::GravitySpin,
     SetupItem::Status,
     SetupItem::AutoSize,
@@ -603,7 +690,7 @@ fn run_setup(mut config: Config) -> Result<Option<Config>, String> {
                     return Ok(Some(config));
                 }
                 SetupItem::Quit => return Ok(None),
-                SetupItem::Color | SetupItem::Status | SetupItem::AutoSize => {
+                SetupItem::Color | SetupItem::Charset | SetupItem::Status | SetupItem::AutoSize => {
                     adjust_setup_value(&mut config, SETUP_ITEMS[selected], 1);
                 }
                 _ => {}
@@ -653,6 +740,7 @@ fn render_setup_row(
         SetupItem::Particles => "Particles",
         SetupItem::Fps => "FPS",
         SetupItem::Color => "Color",
+        SetupItem::Charset => "Character set",
         SetupItem::GravitySpin => "Gravity spin",
         SetupItem::Status => "Status line",
         SetupItem::AutoSize => "Auto size",
@@ -667,6 +755,7 @@ fn render_setup_row(
         SetupItem::Particles => config.particles.to_string(),
         SetupItem::Fps => config.fps.to_string(),
         SetupItem::Color => config.color.label().to_string(),
+        SetupItem::Charset => config.charset.label().to_string(),
         SetupItem::GravitySpin => format!("{:.1}", config.gravity_spin),
         SetupItem::Status => {
             if config.show_status {
@@ -727,6 +816,13 @@ fn adjust_setup_value(config: &mut Config, item: SetupItem, direction: i32) {
                 config.color.previous()
             };
         }
+        SetupItem::Charset => {
+            config.charset = if direction >= 0 {
+                config.charset.next()
+            } else {
+                config.charset.previous()
+            };
+        }
         SetupItem::GravitySpin => {
             config.gravity_spin = (config.gravity_spin + direction as f64 * 0.1).clamp(-10.0, 10.0);
         }
@@ -773,6 +869,7 @@ fn save_settings(config: &Config) -> Result<(), String> {
 LIQUID_PARTICLES={}\n\
 LIQUID_FPS={}\n\
 LIQUID_COLOR={}\n\
+LIQUID_CHARSET={}\n\
 LIQUID_GRAVITY_SPIN={:.1}\n\
 LIQUID_STATUS={}\n\
 LIQUID_AUTO_SIZE={}\n\
@@ -781,6 +878,7 @@ LIQUID_ROWS={}\n",
         config.particles,
         config.fps,
         config.color.as_arg(),
+        config.charset.as_arg(),
         config.gravity_spin,
         if config.show_status { 1 } else { 0 },
         if config.auto_size { 1 } else { 0 },
@@ -850,10 +948,18 @@ fn project_axis(value: f64, world_size: f64, cells: usize) -> usize {
     (normalized * (cells - 1) as f64).round() as usize
 }
 
-fn density_char(density: f32) -> char {
+fn density_char(density: f32, charset: Charset) -> char {
+    if density <= 0.0 {
+        return ' ';
+    }
+    if charset == Charset::Solid {
+        return SOLID_BLOCK;
+    }
+
     let intensity = (density / DENSITY_FULL).clamp(0.0, 1.0);
-    let index = (intensity * (PALETTE.len() - 1) as f32).round() as usize;
-    PALETTE[index] as char
+    let chars = charset.chars();
+    let index = (intensity * (chars.len() - 1) as f32).round() as usize;
+    chars[index]
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -945,6 +1051,34 @@ mod tests {
         assert!(!output.contains("\x1b[38;2;"));
         assert!(!output.contains("\x1b[48;"));
     }
+
+    #[test]
+    fn charset_rendering_changes_density_glyphs() {
+        let mut grid = DensityGrid::new(2, 1);
+        grid.add_density(0, 0, 0.25);
+        grid.add_density(1, 0, DENSITY_FULL);
+
+        let dots = grid.render(
+            0,
+            &Config {
+                color: ColorTheme::Mono,
+                charset: Charset::Dots,
+                ..Config::defaults()
+            },
+        );
+        assert!(dots.contains('.'));
+        assert!(dots.contains('\u{25cf}'));
+
+        let solid = grid.render(
+            0,
+            &Config {
+                color: ColorTheme::Mono,
+                charset: Charset::Solid,
+                ..Config::defaults()
+            },
+        );
+        assert!(solid.contains("\u{2588}\u{2588}"));
+    }
 }
 
 fn print_help() {
@@ -960,6 +1094,7 @@ Options:\n\
   --fixed-size    Use --cols and --rows instead of terminal size\n\
   --color THEME   Color theme: blue, cyan, deep-blue, mono [default: blue]\n\
   --no-color      Alias for --color mono\n\
+  --charset NAME  Density characters: classic, dots, blocks, solid [default: classic]\n\
   --gravity-spin N\n\
                   Gravity rotation speed multiplier [default: 1.0]\n\
   --particles N   Particle count [default: 2000]\n\
