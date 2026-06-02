@@ -107,11 +107,12 @@ Bluetooth, and diagnostics. Use direct subcommands only when scripting or
 debugging, for example `liquid setup`, `liquid restart`, `liquid led-test`, or
 `liquid attach`.
 
-The setup screen starts the renderer immediately if you press Enter. Move
-through values with the arrow keys, use left/right to adjust them, and choose
-`Save + start` to write `~/liquid/.liquid/settings.env` before launching. The
-default runtime settings are 500 particles, 60 FPS, auto-size on, deep-blue
-color, classic charset, and no changing status line.
+The setup screen uses the same `dialog` menu style as the main `liquid` menu,
+with a numbered fallback when `dialog` is unavailable. It can save settings,
+start the terminal renderer, or start the LED matrix renderer. Numeric settings
+accept exact values plus fine and rough step changes. The default terminal
+runtime settings are 500 particles, 60 FPS, auto-size on, deep-blue color,
+classic charset, and no changing status line.
 
 The renderer hides the changing status line by default to avoid flicker in tmux
 and SSH terminals. Enable it only when debugging with `--status` or
@@ -361,6 +362,10 @@ Open the setup screen explicitly with the repo script:
 ```sh
 scripts/liquid setup
 ```
+
+The setup menu edits both terminal renderer settings and LED matrix settings.
+For numeric values, choose the setting and enter an exact value or use fine and
+rough step changes.
 
 For a bounded smoke test that exits on its own:
 

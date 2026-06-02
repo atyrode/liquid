@@ -14,7 +14,8 @@
   the `led-matrix` feature.
 - The renderer supports colors, selectable character sets, gravity spin,
   fixed-size grids, auto-size grids, bounded frame counts for smoke tests, and
-  an interactive setup screen.
+  an interactive setup screen. The setup screen is owned by `scripts/liquid` so
+  it uses the same `dialog` or numbered-menu style as the main runtime menu.
 
 ## Current Runtime Workflow
 
