@@ -10,6 +10,7 @@ The image is intentionally headless:
 - SSH, Wi-Fi tools, Bluetooth tools, Avahi/mDNS, and diagnostics included
 - the Liquid repo is baked into `/home/artist/liquid`
 - the terminal renderer starts detached in tmux
+- optional WS2812B LED matrix commands can be built on demand from the checkout
 - the runtime has one user-facing entrypoint: `liquid`
 - local renderer settings live inside the checkout at
   `/home/artist/liquid/.liquid/settings.env`
@@ -101,9 +102,10 @@ Open the runtime menu:
 liquid
 ```
 
-The menu exposes setup, start, attach, restart, stop, update, Bluetooth, and
-diagnostics. Use direct subcommands only when scripting or debugging, for
-example `liquid setup`, `liquid restart`, or `liquid attach`.
+The menu exposes setup, start, attach, restart, stop, LED matrix tests, update,
+Bluetooth, and diagnostics. Use direct subcommands only when scripting or
+debugging, for example `liquid setup`, `liquid restart`, `liquid led-test`, or
+`liquid attach`.
 
 The setup screen starts the renderer immediately if you press Enter. Move
 through values with the arrow keys, use left/right to adjust them, and choose
@@ -365,6 +367,54 @@ For a bounded smoke test that exits on its own:
 ```sh
 scripts/liquid run --fixed-size --cols 40 --rows 20 --particles 500 --color cyan --charset dots --gravity-spin 0 --frames 5
 ```
+
+## WS2812B LED Matrix
+
+The LED matrix path is opt-in and builds a separate renderer from
+`code/examples/led_matrix.rs`. It currently targets a WS2812B matrix on the Pi
+3 A+ SPI0 MOSI pin with conservative defaults: one 8x8 serpentine panel, first
+LED at `top-left`, low brightness, and SPI at 3 MHz.
+
+Do not power the LED matrix from the Pi. Use a 5V external power supply sized
+for the panel, connect the supply ground to Pi ground, and feed the panel's
+`DIN` from Pi SPI0 MOSI, BCM GPIO 10, physical pin 19. A 3.3V-to-5V logic level
+shifter such as a 74AHCT125-style module is strongly recommended on the data
+line because the Pi outputs 3.3V logic and WS2812B panels are 5V devices.
+
+After wiring, start with the Arduino-parity green orbit test:
+
+```sh
+liquid led-orbit
+```
+
+Then run the RGB fill, physical LED chase, and row tests:
+
+```sh
+liquid led-test
+```
+
+If the first pixel or row direction is not what you expect, adjust the mapping:
+
+```sh
+liquid led-orbit --origin bottom-left
+liquid led-orbit --linear
+```
+
+Once the matrix order is correct, run the simulation on the LEDs:
+
+```sh
+liquid run-led
+```
+
+For the planned 3x2 chain of 8x8 panels, start with:
+
+```sh
+liquid run-led --chain-cols 3 --chain-rows 2
+```
+
+If the physical panel-to-panel chain does not behave like one continuous
+serpentine 24x16 matrix, use `liquid led-test --chain-cols 3 --chain-rows 2` to
+observe the order before adding a panel-aware mapping mode.
 
 Run the windowed developer renderer on a machine with a display:
 

@@ -10,6 +10,7 @@ config_dir="${LIQUID_CONFIG_DIR:-$repo_dir/.liquid}"
 config_file="${LIQUID_CONFIG:-$config_dir/settings.env}"
 session="${LIQUID_TMUX_SESSION:-liquid}"
 terminal_bin="$code_dir/target/release/examples/terminal"
+led_matrix_bin="$code_dir/target/release/examples/led_matrix"
 
 usage() {
   cat <<'EOF'
@@ -22,6 +23,9 @@ Run without a command to open the terminal menu.
 Commands:
   setup, settings      Open renderer setup/settings UI.
   run [ARGS...]        Run the renderer in the current terminal.
+  run-led [ARGS...]    Run the renderer on a WS2812B LED matrix.
+  led-test [ARGS...]   Run RGB/chase/row tests on a WS2812B LED matrix.
+  led-orbit [ARGS...]  Run the green orbit LED matrix test.
   start [--attach]     Start the renderer in tmux.
   restart [--attach]   Restart the tmux renderer.
   attach               Attach to the tmux renderer.
@@ -56,6 +60,16 @@ LIQUID_STATUS=0
 LIQUID_AUTO_SIZE=1
 LIQUID_COLS=100
 LIQUID_ROWS=50
+LIQUID_LED_PANEL_WIDTH=8
+LIQUID_LED_PANEL_HEIGHT=8
+LIQUID_LED_CHAIN_COLS=1
+LIQUID_LED_CHAIN_ROWS=1
+LIQUID_LED_SERPENTINE=1
+LIQUID_LED_ORIGIN=top-left
+LIQUID_LED_BRIGHTNESS=16
+LIQUID_LED_SPI_HZ=3000000
+LIQUID_LED_FPS=30
+LIQUID_LED_PARTICLES=500
 EOF
 }
 
@@ -111,6 +125,35 @@ build_renderer_args() {
   esac
 }
 
+build_led_renderer_args() {
+  led_args=(
+    --panel-width "${LIQUID_LED_PANEL_WIDTH:-8}"
+    --panel-height "${LIQUID_LED_PANEL_HEIGHT:-8}"
+    --chain-cols "${LIQUID_LED_CHAIN_COLS:-1}"
+    --chain-rows "${LIQUID_LED_CHAIN_ROWS:-1}"
+    --origin "${LIQUID_LED_ORIGIN:-top-left}"
+    --brightness "${LIQUID_LED_BRIGHTNESS:-16}"
+    --spi-hz "${LIQUID_LED_SPI_HZ:-3000000}"
+    --fps "${LIQUID_LED_FPS:-30}"
+    --particles "${LIQUID_LED_PARTICLES:-500}"
+    --color "${LIQUID_LED_COLOR:-${LIQUID_COLOR:-deep-blue}}"
+    --gravity-spin "${LIQUID_LED_GRAVITY_SPIN:-${LIQUID_GRAVITY_SPIN:-1}}"
+  )
+
+  case "${LIQUID_LED_SERPENTINE:-1}" in
+    1|true|yes|on)
+      led_args+=(--serpentine)
+      ;;
+    0|false|no|off)
+      led_args+=(--linear)
+      ;;
+    *)
+      echo "Invalid LIQUID_LED_SERPENTINE value: ${LIQUID_LED_SERPENTINE}" >&2
+      exit 2
+      ;;
+  esac
+}
+
 ensure_terminal_binary() {
   need_repo
 
@@ -128,12 +171,45 @@ ensure_terminal_binary() {
   fi
 }
 
+ensure_led_matrix_binary() {
+  need_repo
+
+  local needs_build=0
+  if [ ! -x "$led_matrix_bin" ]; then
+    needs_build=1
+  elif find "$code_dir/Cargo.toml" "$code_dir/Cargo.lock" "$code_dir/src" "$code_dir/examples" \
+    -type f -newer "$led_matrix_bin" -print -quit | grep -q .; then
+    needs_build=1
+  fi
+
+  if [ "$needs_build" -eq 1 ]; then
+    printf '+ (cd %q && cargo build --release --no-default-features --features led-matrix --example led_matrix)\n' "$code_dir"
+    (cd "$code_dir" && cargo build --release --no-default-features --features led-matrix --example led_matrix)
+  fi
+}
+
 run_renderer() {
   export LIQUID_CONFIG="$config_file"
   load_config
   ensure_terminal_binary
   build_renderer_args
   exec "$terminal_bin" "${renderer_args[@]}" "$@"
+}
+
+run_led_renderer() {
+  export LIQUID_CONFIG="$config_file"
+  load_config
+  ensure_led_matrix_binary
+  build_led_renderer_args
+  exec "$led_matrix_bin" "${led_args[@]}" "$@"
+}
+
+run_led_test() {
+  run_led_renderer --test "$@"
+}
+
+run_led_orbit() {
+  run_led_renderer --orbit-test "$@"
 }
 
 open_setup() {
@@ -460,12 +536,15 @@ show_menu() {
     choice="$(
       dialog --stdout --clear \
         --title "Liquid" \
-        --menu "Choose an action" 19 74 10 \
+        --menu "Choose an action" 22 74 13 \
         setup "Renderer setup/settings" \
         start "Start renderer in tmux" \
         attach "Attach to renderer tmux" \
         restart "Restart renderer tmux" \
         stop "Stop renderer tmux" \
+        led-test "Test WS2812B LED matrix wiring" \
+        led-orbit "Run green LED orbit test" \
+        run-led "Run renderer on WS2812B LED matrix" \
         update "Pull repo and rebuild renderer" \
         bluetooth "Pair/connect Bluetooth keyboard" \
         doctor "Run diagnostics" \
@@ -482,10 +561,13 @@ Liquid
 3. Attach to renderer tmux
 4. Restart renderer tmux
 5. Stop renderer tmux
-6. Pull repo and rebuild renderer
-7. Pair/connect Bluetooth keyboard
-8. Run diagnostics
-9. Install/update Pi system runtime
+6. Test WS2812B LED matrix wiring
+7. Run green LED orbit test
+8. Run renderer on WS2812B LED matrix
+9. Pull repo and rebuild renderer
+10. Pair/connect Bluetooth keyboard
+11. Run diagnostics
+12. Install/update Pi system runtime
 0. Quit
 
 EOF
@@ -497,10 +579,13 @@ EOF
       3) choice="attach" ;;
       4) choice="restart" ;;
       5) choice="stop" ;;
-      6) choice="update" ;;
-      7) choice="bluetooth" ;;
-      8) choice="doctor" ;;
-      9) choice="install-system" ;;
+      6) choice="led-test" ;;
+      7) choice="led-orbit" ;;
+      8) choice="run-led" ;;
+      9) choice="update" ;;
+      10) choice="bluetooth" ;;
+      11) choice="doctor" ;;
+      12) choice="install-system" ;;
       0) choice="quit" ;;
     esac
   fi
@@ -523,6 +608,15 @@ dispatch() {
       ;;
     run)
       run_renderer "$@"
+      ;;
+    run-led|led-run)
+      run_led_renderer "$@"
+      ;;
+    led-test|test-led)
+      run_led_test "$@"
+      ;;
+    led-orbit|orbit-led)
+      run_led_orbit "$@"
       ;;
     start)
       start_renderer "$@"

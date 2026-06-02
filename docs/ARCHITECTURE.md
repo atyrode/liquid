@@ -79,8 +79,15 @@ liquid restart
 
 `code/src/particle.rs` owns the simulation data model and stepping logic.
 
+`code/src/raster.rs` owns shared density-grid rasterization for renderers that
+turn particle positions into low-resolution pixel cells.
+
 `code/src/terminal.rs` owns the terminal renderer, settings loading, setup UI,
-terminal rasterization, and terminal lifecycle.
+terminal character/color presentation, and terminal lifecycle.
+
+`code/src/led_matrix.rs` owns the optional WS2812B LED matrix renderer and
+hardware test patterns. It is compiled only with the `led-matrix` feature and
+uses SPI0 through Raspberry Pi peripheral access.
 
 `code/examples/terminal.rs` is intentionally thin:
 
@@ -89,6 +96,9 @@ fn main() -> Result<(), String> {
     fluid_sim::terminal::run_from_env()
 }
 ```
+
+`code/examples/led_matrix.rs` is also thin and exists so the Pi can build the
+LED renderer separately from the default terminal renderer.
 
 `code/src/main.rs` remains the windowed developer renderer and uses the shared
 library module through `fluid_sim::particle::Particles`.
@@ -120,3 +130,26 @@ debugging frame/config values.
 
 This avoids the visible prompt/cursor artifacts caused by repeatedly printing
 full frames into the normal terminal scrollback.
+
+## LED Matrix Rendering
+
+The LED matrix path is opt-in. `scripts/liquid` builds
+`code/examples/led_matrix.rs` with `--no-default-features --features led-matrix`
+for `liquid led-test`, `liquid led-orbit`, and `liquid run-led`.
+
+The first supported hardware target is an 8x8 WS2812B serpentine panel on a
+Raspberry Pi 3 A+ using SPI0 MOSI. The renderer uses `rppal` for the Pi SPI bus,
+`ws2812-spi`'s hosted writer for Linux SBC timing, and `smart-leds` for
+brightness/gamma handling.
+
+The LED renderer maps the shared density grid to LED colors, then maps display
+coordinates into physical LED indices with configurable origin and linear or
+serpentine row order. The defaults match the known Arduino/FastLED test mapping:
+row-major indexing with odd rows reversed.
+
+LED settings are stored as additional non-secret values in
+`~/liquid/.liquid/settings.env` when the default file is created. Existing
+settings files continue to work because `scripts/liquid` supplies defaults when
+the LED-specific values are absent. The terminal setup screen only edits
+terminal renderer fields and preserves existing `LIQUID_LED_*` lines when it
+saves the shared settings file.

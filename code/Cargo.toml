@@ -7,7 +7,11 @@ edition = "2024"
 crossterm = "0.29.0"
 minifb = { version = "0.28.0", optional = true }
 rand = "0.10.1"
+rppal = { version = "0.22.1", optional = true, features = ["embedded-hal"] }
+smart-leds = { version = "0.4.0", optional = true }
+ws2812-spi = { version = "0.5.1", optional = true, features = ["std"] }
 
 [features]
 default = ["window"]
+led-matrix = ["dep:rppal", "dep:smart-leds", "dep:ws2812-spi"]
 window = ["dep:minifb"]

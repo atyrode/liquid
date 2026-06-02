@@ -1,4 +1,5 @@
-use crate::particle::{Particles, Vec2f64};
+use crate::particle::Particles;
+use crate::raster::{DENSITY_FULL, DensityGrid, GridSize};
 use crossterm::{
     cursor::{Hide, MoveTo, Show},
     event::{self, Event, KeyCode, KeyModifiers},
@@ -12,13 +13,12 @@ use crossterm::{
 use std::env;
 use std::fs;
 use std::io::{self, IsTerminal, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant};
 
 const WORLD_WIDTH: f64 = 1080.0;
 const WORLD_HEIGHT: f64 = 1080.0;
-const DENSITY_FULL: f32 = 3.0;
 const CLASSIC_CHARSET: &[char] = &[' ', '.', ':', '-', '=', '+', '*', '#', '%', '@'];
 const DOT_CHARSET: &[char] = &[
     ' ', '.', '.', ':', ':', '\u{00b7}', '\u{00b7}', '\u{2022}', '\u{2022}', '\u{25cf}',
@@ -28,6 +28,18 @@ const BLOCK_CHARSET: &[char] = &[
     '\u{2588}', '\u{2588}',
 ];
 const SOLID_BLOCK: char = '\u{2588}';
+const TERMINAL_SETTING_KEYS: &[&str] = &[
+    "LIQUID_COLS",
+    "LIQUID_ROWS",
+    "LIQUID_AUTO_SIZE",
+    "LIQUID_COLOR",
+    "LIQUID_CHARSET",
+    "LIQUID_GRAVITY_SPIN",
+    "LIQUID_PARTICLES",
+    "LIQUID_FPS",
+    "LIQUID_FRAMES",
+    "LIQUID_STATUS",
+];
 
 #[derive(Debug, Clone)]
 struct Config {
@@ -128,18 +140,7 @@ impl Config {
     }
 
     fn apply_env(&mut self) -> Result<(), String> {
-        for key in [
-            "LIQUID_COLS",
-            "LIQUID_ROWS",
-            "LIQUID_AUTO_SIZE",
-            "LIQUID_COLOR",
-            "LIQUID_CHARSET",
-            "LIQUID_GRAVITY_SPIN",
-            "LIQUID_PARTICLES",
-            "LIQUID_FPS",
-            "LIQUID_FRAMES",
-            "LIQUID_STATUS",
-        ] {
+        for key in TERMINAL_SETTING_KEYS {
             if let Ok(value) = env::var(key) {
                 self.apply_setting(key, value.as_str())?;
             }
@@ -326,55 +327,7 @@ impl ColorTheme {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-struct GridSize {
-    cols: usize,
-    rows: usize,
-}
-
-struct DensityGrid {
-    cols: usize,
-    rows: usize,
-    cells: Vec<f32>,
-}
-
 impl DensityGrid {
-    fn new(cols: usize, rows: usize) -> Self {
-        Self {
-            cols,
-            rows,
-            cells: vec![0.0; cols * rows],
-        }
-    }
-
-    fn size(&self) -> GridSize {
-        GridSize {
-            cols: self.cols,
-            rows: self.rows,
-        }
-    }
-
-    fn rasterize(&mut self, particles: &[Vec2f64], world_width: f64, world_height: f64) {
-        self.cells.fill(0.0);
-
-        for particle in particles {
-            let col = project_axis(particle.x, world_width, self.cols);
-            let row = self.rows - 1 - project_axis(particle.y, world_height, self.rows);
-
-            self.add_density(col, row, 1.0);
-            self.add_density(col.saturating_sub(1), row, 0.25);
-            self.add_density(col + 1, row, 0.25);
-            self.add_density(col, row.saturating_sub(1), 0.25);
-            self.add_density(col, row + 1, 0.25);
-        }
-    }
-
-    fn add_density(&mut self, col: usize, row: usize, amount: f32) {
-        if col < self.cols && row < self.rows {
-            self.cells[row * self.cols + col] += amount;
-        }
-    }
-
     fn render(&self, frame: usize, config: &Config) -> String {
         let status_rows = usize::from(config.show_status);
         let mut output = String::with_capacity((self.cols + 1) * (self.rows + status_rows) * 2);
@@ -861,7 +814,21 @@ fn save_settings(config: &Config) -> Result<(), String> {
         fs::create_dir_all(parent).map_err(|err| err.to_string())?;
     }
 
-    let contents = format!(
+    let mut contents = terminal_settings_contents(config);
+    let preserved_led_settings = preserved_led_settings(&path)?;
+    if !preserved_led_settings.is_empty() {
+        contents.push_str("\n# LED matrix settings preserved by terminal setup.\n");
+        for line in preserved_led_settings {
+            contents.push_str(&line);
+            contents.push('\n');
+        }
+    }
+
+    fs::write(path, contents).map_err(|err| err.to_string())
+}
+
+fn terminal_settings_contents(config: &Config) -> String {
+    format!(
         "\
 # Local Liquid renderer settings.\n\
 # This file is written by `liquid setup` and ignored by git.\n\
@@ -884,9 +851,26 @@ LIQUID_ROWS={}\n",
         if config.auto_size { 1 } else { 0 },
         config.cols,
         config.rows
-    );
+    )
+}
 
-    fs::write(path, contents).map_err(|err| err.to_string())
+fn preserved_led_settings(path: &Path) -> Result<Vec<String>, String> {
+    let Ok(contents) = fs::read_to_string(path) else {
+        return Ok(Vec::new());
+    };
+
+    Ok(contents
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            let (key, _) = trimmed.split_once('=')?;
+            if key.trim().starts_with("LIQUID_LED_") {
+                Some(trimmed.to_string())
+            } else {
+                None
+            }
+        })
+        .collect())
 }
 
 fn parse_next<T>(args: &mut impl Iterator<Item = String>, name: &str) -> Result<T, String>
@@ -937,15 +921,6 @@ fn settings_path() -> Option<PathBuf> {
     env::var("HOME")
         .ok()
         .map(|home| PathBuf::from(home).join("liquid/.liquid/settings.env"))
-}
-
-fn project_axis(value: f64, world_size: f64, cells: usize) -> usize {
-    if cells == 1 {
-        return 0;
-    }
-
-    let normalized = (value / world_size).clamp(0.0, 1.0);
-    (normalized * (cells - 1) as f64).round() as usize
 }
 
 fn density_char(density: f32, charset: Charset) -> char {
@@ -1078,6 +1053,38 @@ mod tests {
             },
         );
         assert!(solid.contains("\u{2588}\u{2588}"));
+    }
+
+    #[test]
+    fn setup_save_preserves_led_settings() {
+        let path = env::temp_dir().join(format!(
+            "liquid-terminal-settings-{}-preserve-led.env",
+            std::process::id()
+        ));
+
+        fs::write(
+            &path,
+            "\
+LIQUID_PARTICLES=500
+LIQUID_LED_PANEL_WIDTH=8
+LIQUID_LED_CHAIN_COLS=3
+IGNORED_VALUE=yes
+LIQUID_LED_ORIGIN=bottom-left
+",
+        )
+        .unwrap();
+
+        let preserved = preserved_led_settings(&path).unwrap();
+        let _ = fs::remove_file(path);
+
+        assert_eq!(
+            preserved,
+            vec![
+                "LIQUID_LED_PANEL_WIDTH=8".to_string(),
+                "LIQUID_LED_CHAIN_COLS=3".to_string(),
+                "LIQUID_LED_ORIGIN=bottom-left".to_string()
+            ]
+        );
     }
 }
 
