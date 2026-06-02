@@ -9,8 +9,9 @@
 - The runtime has one user-facing command: `liquid`, backed by
   `scripts/liquid`.
 - The terminal renderer is a Rust library module with a thin example entrypoint.
-- The renderer supports colors, gravity spin, fixed-size grids, auto-size grids,
-  bounded frame counts for smoke tests, and an interactive setup screen.
+- The renderer supports colors, selectable character sets, gravity spin,
+  fixed-size grids, auto-size grids, bounded frame counts for smoke tests, and
+  an interactive setup screen.
 
 ## Current Runtime Workflow
 
@@ -56,7 +57,7 @@ git diff --check
 Run a bounded terminal renderer smoke test:
 
 ```sh
-scripts/liquid run --fixed-size --cols 40 --rows 20 --particles 500 --color cyan --gravity-spin 0 --frames 5
+scripts/liquid run --fixed-size --cols 40 --rows 20 --particles 500 --color cyan --charset dots --gravity-spin 0 --frames 5
 ```
 
 ## Next Work

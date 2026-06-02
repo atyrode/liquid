@@ -109,7 +109,7 @@ The setup screen starts the renderer immediately if you press Enter. Move
 through values with the arrow keys, use left/right to adjust them, and choose
 `Save + start` to write `~/liquid/.liquid/settings.env` before launching. The
 default runtime settings are 500 particles, 60 FPS, auto-size on, deep-blue
-color, and no changing status line.
+color, classic charset, and no changing status line.
 
 The renderer hides the changing status line by default to avoid flicker in tmux
 and SSH terminals. Enable it only when debugging with `--status` or
@@ -336,6 +336,18 @@ scripts/liquid run --auto-size --color deep-blue
 The renderer uses standard ANSI foreground colors for these themes so they work
 on the Pi console, SSH, and tmux without requiring truecolor support.
 
+Choose density characters with `--charset`:
+
+```sh
+scripts/liquid run --auto-size --charset dots
+scripts/liquid run --auto-size --charset blocks
+scripts/liquid run --auto-size --charset solid
+```
+
+`classic` keeps the current ASCII ramp, `dots` uses dotted density marks,
+`blocks` uses shaded block cells, and `solid` uses full-block cells for a
+denser water shape.
+
 Adjust the rotating gravity speed with `--gravity-spin`:
 
 ```sh
@@ -351,7 +363,7 @@ scripts/liquid setup
 For a bounded smoke test that exits on its own:
 
 ```sh
-scripts/liquid run --fixed-size --cols 40 --rows 20 --particles 500 --color cyan --gravity-spin 0 --frames 5
+scripts/liquid run --fixed-size --cols 40 --rows 20 --particles 500 --color cyan --charset dots --gravity-spin 0 --frames 5
 ```
 
 Run the windowed developer renderer on a machine with a display:

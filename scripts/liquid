@@ -50,6 +50,7 @@ write_default_config() {
 LIQUID_PARTICLES=500
 LIQUID_FPS=60
 LIQUID_COLOR=deep-blue
+LIQUID_CHARSET=classic
 LIQUID_GRAVITY_SPIN=1
 LIQUID_STATUS=0
 LIQUID_AUTO_SIZE=1
@@ -92,6 +93,7 @@ build_renderer_args() {
     --particles "${LIQUID_PARTICLES:-500}"
     --fps "${LIQUID_FPS:-60}"
     --color "${LIQUID_COLOR:-deep-blue}"
+    --charset "${LIQUID_CHARSET:-classic}"
     --gravity-spin "${LIQUID_GRAVITY_SPIN:-1}"
   )
 
