@@ -45,32 +45,61 @@ need_repo() {
   fi
 }
 
-write_default_config() {
+save_config_file() {
   mkdir -p "$(dirname -- "$config_file")"
   cat >"$config_file" <<'EOF'
 # Local Liquid renderer settings.
 # This file is written by `liquid setup` and ignored by git.
 
-LIQUID_PARTICLES=500
-LIQUID_FPS=60
-LIQUID_COLOR=deep-blue
-LIQUID_CHARSET=classic
-LIQUID_GRAVITY_SPIN=1
-LIQUID_STATUS=0
-LIQUID_AUTO_SIZE=1
-LIQUID_COLS=100
-LIQUID_ROWS=50
-LIQUID_LED_PANEL_WIDTH=8
-LIQUID_LED_PANEL_HEIGHT=8
-LIQUID_LED_CHAIN_COLS=1
-LIQUID_LED_CHAIN_ROWS=1
-LIQUID_LED_SERPENTINE=1
-LIQUID_LED_ORIGIN=top-left
-LIQUID_LED_BRIGHTNESS=16
-LIQUID_LED_SPI_HZ=3000000
-LIQUID_LED_FPS=30
-LIQUID_LED_PARTICLES=500
 EOF
+  cat >>"$config_file" <<EOF
+LIQUID_PARTICLES=${LIQUID_PARTICLES:-500}
+LIQUID_FPS=${LIQUID_FPS:-60}
+LIQUID_COLOR=${LIQUID_COLOR:-deep-blue}
+LIQUID_CHARSET=${LIQUID_CHARSET:-classic}
+LIQUID_GRAVITY_SPIN=${LIQUID_GRAVITY_SPIN:-1}
+LIQUID_STATUS=${LIQUID_STATUS:-0}
+LIQUID_AUTO_SIZE=${LIQUID_AUTO_SIZE:-1}
+LIQUID_COLS=${LIQUID_COLS:-100}
+LIQUID_ROWS=${LIQUID_ROWS:-50}
+LIQUID_LED_PANEL_WIDTH=${LIQUID_LED_PANEL_WIDTH:-8}
+LIQUID_LED_PANEL_HEIGHT=${LIQUID_LED_PANEL_HEIGHT:-8}
+LIQUID_LED_CHAIN_COLS=${LIQUID_LED_CHAIN_COLS:-1}
+LIQUID_LED_CHAIN_ROWS=${LIQUID_LED_CHAIN_ROWS:-1}
+LIQUID_LED_SERPENTINE=${LIQUID_LED_SERPENTINE:-1}
+LIQUID_LED_ORIGIN=${LIQUID_LED_ORIGIN:-top-left}
+LIQUID_LED_COLOR=${LIQUID_LED_COLOR:-${LIQUID_COLOR:-deep-blue}}
+LIQUID_LED_BRIGHTNESS=${LIQUID_LED_BRIGHTNESS:-16}
+LIQUID_LED_SPI_HZ=${LIQUID_LED_SPI_HZ:-3000000}
+LIQUID_LED_FPS=${LIQUID_LED_FPS:-30}
+LIQUID_LED_PARTICLES=${LIQUID_LED_PARTICLES:-500}
+LIQUID_LED_GRAVITY_SPIN=${LIQUID_LED_GRAVITY_SPIN:-${LIQUID_GRAVITY_SPIN:-1}}
+EOF
+}
+
+write_default_config() {
+  LIQUID_PARTICLES=500
+  LIQUID_FPS=60
+  LIQUID_COLOR=deep-blue
+  LIQUID_CHARSET=classic
+  LIQUID_GRAVITY_SPIN=1
+  LIQUID_STATUS=0
+  LIQUID_AUTO_SIZE=1
+  LIQUID_COLS=100
+  LIQUID_ROWS=50
+  LIQUID_LED_PANEL_WIDTH=8
+  LIQUID_LED_PANEL_HEIGHT=8
+  LIQUID_LED_CHAIN_COLS=1
+  LIQUID_LED_CHAIN_ROWS=1
+  LIQUID_LED_SERPENTINE=1
+  LIQUID_LED_ORIGIN=top-left
+  LIQUID_LED_COLOR=deep-blue
+  LIQUID_LED_BRIGHTNESS=16
+  LIQUID_LED_SPI_HZ=3000000
+  LIQUID_LED_FPS=30
+  LIQUID_LED_PARTICLES=500
+  LIQUID_LED_GRAVITY_SPIN=1
+  save_config_file
 }
 
 ensure_config_file() {
@@ -212,8 +241,551 @@ run_led_orbit() {
   run_led_renderer --orbit-test "$@"
 }
 
+dialog_available() {
+  command -v dialog >/dev/null 2>&1 && [ -t 0 ] && [ -t 1 ]
+}
+
+bool_label() {
+  case "${1:-0}" in
+    1|true|yes|on)
+      printf 'on'
+      ;;
+    *)
+      printf 'off'
+      ;;
+  esac
+}
+
+toggle_bool_var() {
+  local var="$1"
+
+  case "${!var:-0}" in
+    1|true|yes|on)
+      printf -v "$var" '0'
+      ;;
+    *)
+      printf -v "$var" '1'
+      ;;
+  esac
+}
+
+show_setup_error() {
+  local message="$1"
+
+  if dialog_available; then
+    dialog --title "Liquid settings" --msgbox "$message" 8 72
+  else
+    echo "$message" >&2
+  fi
+}
+
+set_number_var() {
+  local var="$1"
+  local label="$2"
+  local value="$3"
+  local min="$4"
+  local max="$5"
+  local kind="$6"
+  local normalized
+
+  if [ "$kind" = "int" ]; then
+    if ! [[ "$value" =~ ^[0-9]+$ ]]; then
+      show_setup_error "$label must be an integer."
+      return 1
+    fi
+
+    normalized=$((10#$value))
+    if (( normalized < min || normalized > max )); then
+      show_setup_error "$label must be between $min and $max."
+      return 1
+    fi
+  else
+    if ! [[ "$value" =~ ^-?[0-9]+([.][0-9]+)?$ ]]; then
+      show_setup_error "$label must be a number."
+      return 1
+    fi
+
+    if ! awk -v value="$value" -v min="$min" -v max="$max" 'BEGIN { exit !(value >= min && value <= max) }'; then
+      show_setup_error "$label must be between $min and $max."
+      return 1
+    fi
+    normalized="$(awk -v value="$value" 'BEGIN { printf "%g", value }')"
+  fi
+
+  printf -v "$var" '%s' "$normalized"
+}
+
+adjust_number_var() {
+  local var="$1"
+  local delta="$2"
+  local min="$3"
+  local max="$4"
+  local kind="$5"
+  local current="${!var:-$min}"
+  local next
+
+  if [ "$kind" = "int" ]; then
+    if ! [[ "$current" =~ ^[0-9]+$ ]]; then
+      current="$min"
+    fi
+
+    next=$((10#$current + delta))
+    if (( next < min )); then
+      next="$min"
+    elif (( next > max )); then
+      next="$max"
+    fi
+  else
+    if ! [[ "$current" =~ ^-?[0-9]+([.][0-9]+)?$ ]]; then
+      current="$min"
+    fi
+
+    next="$(
+      awk -v current="$current" -v delta="$delta" -v min="$min" -v max="$max" \
+        'BEGIN { result = current + delta; if (result < min) result = min; if (result > max) result = max; printf "%g", result }'
+    )"
+  fi
+
+  printf -v "$var" '%s' "$next"
+}
+
+dialog_edit_number() {
+  local var="$1"
+  local label="$2"
+  local min="$3"
+  local max="$4"
+  local fine_step="$5"
+  local rough_step="$6"
+  local kind="$7"
+  local choice value
+
+  while true; do
+    choice="$(
+      dialog --stdout --clear \
+        --title "$label" \
+        --menu "Current: ${!var:-}. Enter an exact value, or apply a fine/rough step." 18 78 8 \
+        exact "Enter exact value" \
+        inc-fine "+$fine_step fine step" \
+        dec-fine "-$fine_step fine step" \
+        inc-rough "+$rough_step rough step" \
+        dec-rough "-$rough_step rough step" \
+        back "Back"
+    )" || return 0
+
+    case "$choice" in
+      exact)
+        value="$(
+          dialog --stdout --clear \
+            --title "$label" \
+            --inputbox "Enter $label ($min to $max)." 8 72 "${!var:-}"
+        )" || continue
+        set_number_var "$var" "$label" "$value" "$min" "$max" "$kind" && return 0
+        ;;
+      inc-fine)
+        adjust_number_var "$var" "$fine_step" "$min" "$max" "$kind"
+        ;;
+      dec-fine)
+        adjust_number_var "$var" "-$fine_step" "$min" "$max" "$kind"
+        ;;
+      inc-rough)
+        adjust_number_var "$var" "$rough_step" "$min" "$max" "$kind"
+        ;;
+      dec-rough)
+        adjust_number_var "$var" "-$rough_step" "$min" "$max" "$kind"
+        ;;
+      back)
+        return 0
+        ;;
+    esac
+  done
+}
+
+dialog_select_value() {
+  local var="$1"
+  local label="$2"
+  shift 2
+  local choice
+
+  choice="$(
+    dialog --stdout --clear \
+      --title "$label" \
+      --menu "Current: ${!var:-}" 16 72 8 \
+      "$@"
+  )" || return 0
+
+  printf -v "$var" '%s' "$choice"
+}
+
+start_terminal_from_setup() {
+  ensure_terminal_binary
+  build_renderer_args
+  exec "$terminal_bin" "${renderer_args[@]}" "$@"
+}
+
+start_led_from_setup() {
+  ensure_led_matrix_binary
+  build_led_renderer_args
+  exec "$led_matrix_bin" "${led_args[@]}" "$@"
+}
+
+run_dialog_setup() {
+  local choice
+
+  while true; do
+    choice="$(
+      dialog --stdout --clear \
+        --title "Liquid settings" \
+        --menu "Edit runtime settings. Numeric values support exact entry plus fine and rough steps." 22 78 14 \
+        start-terminal "Start terminal renderer with current values" \
+        save-start-terminal "Save settings, then start terminal renderer" \
+        start-led "Start LED matrix renderer with current values" \
+        save "Save settings to $config_file" \
+        terminal-particles "Terminal particles: ${LIQUID_PARTICLES:-500}" \
+        terminal-fps "Terminal FPS: ${LIQUID_FPS:-60}" \
+        terminal-color "Terminal color: ${LIQUID_COLOR:-deep-blue}" \
+        terminal-charset "Terminal charset: ${LIQUID_CHARSET:-classic}" \
+        terminal-gravity "Terminal gravity spin: ${LIQUID_GRAVITY_SPIN:-1}" \
+        terminal-status "Terminal status line: $(bool_label "${LIQUID_STATUS:-0}")" \
+        terminal-auto-size "Terminal auto-size: $(bool_label "${LIQUID_AUTO_SIZE:-1}")" \
+        terminal-cols "Terminal fixed columns: ${LIQUID_COLS:-100}" \
+        terminal-rows "Terminal fixed rows: ${LIQUID_ROWS:-50}" \
+        led-particles "LED particles: ${LIQUID_LED_PARTICLES:-500}" \
+        led-fps "LED FPS: ${LIQUID_LED_FPS:-30}" \
+        led-color "LED color: ${LIQUID_LED_COLOR:-${LIQUID_COLOR:-deep-blue}}" \
+        led-brightness "LED brightness: ${LIQUID_LED_BRIGHTNESS:-16}" \
+        led-panel-width "LED panel width: ${LIQUID_LED_PANEL_WIDTH:-8}" \
+        led-panel-height "LED panel height: ${LIQUID_LED_PANEL_HEIGHT:-8}" \
+        led-chain-cols "LED chain columns: ${LIQUID_LED_CHAIN_COLS:-1}" \
+        led-chain-rows "LED chain rows: ${LIQUID_LED_CHAIN_ROWS:-1}" \
+        led-serpentine "LED serpentine wiring: $(bool_label "${LIQUID_LED_SERPENTINE:-1}")" \
+        led-origin "LED first-pixel origin: ${LIQUID_LED_ORIGIN:-top-left}" \
+        led-spi-hz "LED SPI Hz: ${LIQUID_LED_SPI_HZ:-3000000}" \
+        led-gravity "LED gravity spin: ${LIQUID_LED_GRAVITY_SPIN:-${LIQUID_GRAVITY_SPIN:-1}}" \
+        quit "Back to shell"
+    )" || return 0
+
+    case "$choice" in
+      start-terminal)
+        start_terminal_from_setup "$@"
+        ;;
+      save-start-terminal)
+        save_config_file
+        start_terminal_from_setup "$@"
+        ;;
+      start-led)
+        start_led_from_setup "$@"
+        ;;
+      save)
+        save_config_file
+        dialog --title "Liquid settings" --msgbox "Saved settings to $config_file." 7 72
+        ;;
+      terminal-particles)
+        dialog_edit_number LIQUID_PARTICLES "Terminal particles" 100 20000 100 1000 int
+        ;;
+      terminal-fps)
+        dialog_edit_number LIQUID_FPS "Terminal FPS" 1 120 1 10 int
+        ;;
+      terminal-color)
+        dialog_select_value LIQUID_COLOR "Terminal color" \
+          deep-blue "Deep blue" \
+          blue "Blue" \
+          cyan "Cyan" \
+          mono "Mono"
+        ;;
+      terminal-charset)
+        dialog_select_value LIQUID_CHARSET "Terminal charset" \
+          classic "Classic ASCII ramp" \
+          dots "Dotted density marks" \
+          blocks "Shaded block cells" \
+          solid "Full block cells"
+        ;;
+      terminal-gravity)
+        dialog_edit_number LIQUID_GRAVITY_SPIN "Terminal gravity spin" -10 10 0.1 1 float
+        ;;
+      terminal-status)
+        toggle_bool_var LIQUID_STATUS
+        ;;
+      terminal-auto-size)
+        toggle_bool_var LIQUID_AUTO_SIZE
+        ;;
+      terminal-cols)
+        dialog_edit_number LIQUID_COLS "Terminal fixed columns" 1 300 1 10 int
+        ;;
+      terminal-rows)
+        dialog_edit_number LIQUID_ROWS "Terminal fixed rows" 1 200 1 10 int
+        ;;
+      led-particles)
+        dialog_edit_number LIQUID_LED_PARTICLES "LED particles" 1 10000 50 500 int
+        ;;
+      led-fps)
+        dialog_edit_number LIQUID_LED_FPS "LED FPS" 1 120 1 10 int
+        ;;
+      led-color)
+        dialog_select_value LIQUID_LED_COLOR "LED color" \
+          deep-blue "Deep blue" \
+          blue "Blue" \
+          cyan "Cyan" \
+          white "White"
+        ;;
+      led-brightness)
+        dialog_edit_number LIQUID_LED_BRIGHTNESS "LED brightness" 0 255 1 16 int
+        ;;
+      led-panel-width)
+        dialog_edit_number LIQUID_LED_PANEL_WIDTH "LED panel width" 1 128 1 8 int
+        ;;
+      led-panel-height)
+        dialog_edit_number LIQUID_LED_PANEL_HEIGHT "LED panel height" 1 128 1 8 int
+        ;;
+      led-chain-cols)
+        dialog_edit_number LIQUID_LED_CHAIN_COLS "LED chain columns" 1 16 1 3 int
+        ;;
+      led-chain-rows)
+        dialog_edit_number LIQUID_LED_CHAIN_ROWS "LED chain rows" 1 16 1 2 int
+        ;;
+      led-serpentine)
+        toggle_bool_var LIQUID_LED_SERPENTINE
+        ;;
+      led-origin)
+        dialog_select_value LIQUID_LED_ORIGIN "LED first-pixel origin" \
+          top-left "Top left" \
+          top-right "Top right" \
+          bottom-left "Bottom left" \
+          bottom-right "Bottom right"
+        ;;
+      led-spi-hz)
+        dialog_edit_number LIQUID_LED_SPI_HZ "LED SPI Hz" 2000000 3800000 100000 500000 int
+        ;;
+      led-gravity)
+        dialog_edit_number LIQUID_LED_GRAVITY_SPIN "LED gravity spin" -10 10 0.1 1 float
+        ;;
+      quit)
+        return 0
+        ;;
+    esac
+  done
+}
+
+text_edit_number() {
+  local var="$1"
+  local label="$2"
+  local min="$3"
+  local max="$4"
+  local fine_step="$5"
+  local rough_step="$6"
+  local kind="$7"
+  local answer
+
+  while true; do
+    printf '%s is %s. Enter exact value, +/- for fine, ++/-- for rough, or blank to go back: ' "$label" "${!var:-}"
+    read -r answer
+    case "$answer" in
+      "")
+        return 0
+        ;;
+      +)
+        adjust_number_var "$var" "$fine_step" "$min" "$max" "$kind"
+        return 0
+        ;;
+      -)
+        adjust_number_var "$var" "-$fine_step" "$min" "$max" "$kind"
+        return 0
+        ;;
+      ++)
+        adjust_number_var "$var" "$rough_step" "$min" "$max" "$kind"
+        return 0
+        ;;
+      --)
+        adjust_number_var "$var" "-$rough_step" "$min" "$max" "$kind"
+        return 0
+        ;;
+      *)
+        set_number_var "$var" "$label" "$answer" "$min" "$max" "$kind" && return 0
+        ;;
+    esac
+  done
+}
+
+text_select_value() {
+  local var="$1"
+  local label="$2"
+  shift 2
+  local options=("$@")
+  local answer index value
+
+  echo
+  echo "$label is ${!var:-}."
+  for ((index = 0; index < ${#options[@]}; index += 2)); do
+    printf '%d. %s\n' "$((index / 2 + 1))" "${options[index + 1]}"
+  done
+  printf 'Choose a value, or blank to go back: '
+  read -r answer
+  if [ -z "$answer" ]; then
+    return 0
+  fi
+  if ! [[ "$answer" =~ ^[0-9]+$ ]]; then
+    show_setup_error "Choose a number from the list."
+    return 1
+  fi
+
+  index=$(((10#$answer - 1) * 2))
+  if (( index < 0 || index >= ${#options[@]} )); then
+    show_setup_error "Choose a number from the list."
+    return 1
+  fi
+
+  value="${options[index]}"
+  printf -v "$var" '%s' "$value"
+}
+
+run_text_setup() {
+  local choice
+
+  while true; do
+    cat <<EOF
+Liquid settings
+
+1. Start terminal renderer with current values
+2. Save settings, then start terminal renderer
+3. Start LED matrix renderer with current values
+4. Save settings
+5. Terminal particles: ${LIQUID_PARTICLES:-500}
+6. Terminal FPS: ${LIQUID_FPS:-60}
+7. Terminal color: ${LIQUID_COLOR:-deep-blue}
+8. Terminal charset: ${LIQUID_CHARSET:-classic}
+9. Terminal gravity spin: ${LIQUID_GRAVITY_SPIN:-1}
+10. Terminal status line: $(bool_label "${LIQUID_STATUS:-0}")
+11. Terminal auto-size: $(bool_label "${LIQUID_AUTO_SIZE:-1}")
+12. Terminal fixed columns: ${LIQUID_COLS:-100}
+13. Terminal fixed rows: ${LIQUID_ROWS:-50}
+14. LED particles: ${LIQUID_LED_PARTICLES:-500}
+15. LED FPS: ${LIQUID_LED_FPS:-30}
+16. LED color: ${LIQUID_LED_COLOR:-${LIQUID_COLOR:-deep-blue}}
+17. LED brightness: ${LIQUID_LED_BRIGHTNESS:-16}
+18. LED panel width: ${LIQUID_LED_PANEL_WIDTH:-8}
+19. LED panel height: ${LIQUID_LED_PANEL_HEIGHT:-8}
+20. LED chain columns: ${LIQUID_LED_CHAIN_COLS:-1}
+21. LED chain rows: ${LIQUID_LED_CHAIN_ROWS:-1}
+22. LED serpentine wiring: $(bool_label "${LIQUID_LED_SERPENTINE:-1}")
+23. LED first-pixel origin: ${LIQUID_LED_ORIGIN:-top-left}
+24. LED SPI Hz: ${LIQUID_LED_SPI_HZ:-3000000}
+25. LED gravity spin: ${LIQUID_LED_GRAVITY_SPIN:-${LIQUID_GRAVITY_SPIN:-1}}
+0. Quit
+
+Numeric settings accept exact values, +/- fine steps, and ++/-- rough steps.
+EOF
+    printf 'Choose: '
+    read -r choice
+
+    case "$choice" in
+      1)
+        start_terminal_from_setup "$@"
+        ;;
+      2)
+        save_config_file
+        start_terminal_from_setup "$@"
+        ;;
+      3)
+        start_led_from_setup "$@"
+        ;;
+      4)
+        save_config_file
+        echo "Saved settings to $config_file."
+        ;;
+      5)
+        text_edit_number LIQUID_PARTICLES "Terminal particles" 100 20000 100 1000 int
+        ;;
+      6)
+        text_edit_number LIQUID_FPS "Terminal FPS" 1 120 1 10 int
+        ;;
+      7)
+        text_select_value LIQUID_COLOR "Terminal color" \
+          deep-blue "Deep blue" \
+          blue "Blue" \
+          cyan "Cyan" \
+          mono "Mono"
+        ;;
+      8)
+        text_select_value LIQUID_CHARSET "Terminal charset" \
+          classic "Classic ASCII ramp" \
+          dots "Dotted density marks" \
+          blocks "Shaded block cells" \
+          solid "Full block cells"
+        ;;
+      9)
+        text_edit_number LIQUID_GRAVITY_SPIN "Terminal gravity spin" -10 10 0.1 1 float
+        ;;
+      10)
+        toggle_bool_var LIQUID_STATUS
+        ;;
+      11)
+        toggle_bool_var LIQUID_AUTO_SIZE
+        ;;
+      12)
+        text_edit_number LIQUID_COLS "Terminal fixed columns" 1 300 1 10 int
+        ;;
+      13)
+        text_edit_number LIQUID_ROWS "Terminal fixed rows" 1 200 1 10 int
+        ;;
+      14)
+        text_edit_number LIQUID_LED_PARTICLES "LED particles" 1 10000 50 500 int
+        ;;
+      15)
+        text_edit_number LIQUID_LED_FPS "LED FPS" 1 120 1 10 int
+        ;;
+      16)
+        text_select_value LIQUID_LED_COLOR "LED color" \
+          deep-blue "Deep blue" \
+          blue "Blue" \
+          cyan "Cyan" \
+          white "White"
+        ;;
+      17)
+        text_edit_number LIQUID_LED_BRIGHTNESS "LED brightness" 0 255 1 16 int
+        ;;
+      18)
+        text_edit_number LIQUID_LED_PANEL_WIDTH "LED panel width" 1 128 1 8 int
+        ;;
+      19)
+        text_edit_number LIQUID_LED_PANEL_HEIGHT "LED panel height" 1 128 1 8 int
+        ;;
+      20)
+        text_edit_number LIQUID_LED_CHAIN_COLS "LED chain columns" 1 16 1 3 int
+        ;;
+      21)
+        text_edit_number LIQUID_LED_CHAIN_ROWS "LED chain rows" 1 16 1 2 int
+        ;;
+      22)
+        toggle_bool_var LIQUID_LED_SERPENTINE
+        ;;
+      23)
+        text_select_value LIQUID_LED_ORIGIN "LED first-pixel origin" \
+          top-left "Top left" \
+          top-right "Top right" \
+          bottom-left "Bottom left" \
+          bottom-right "Bottom right"
+        ;;
+      24)
+        text_edit_number LIQUID_LED_SPI_HZ "LED SPI Hz" 2000000 3800000 100000 500000 int
+        ;;
+      25)
+        text_edit_number LIQUID_LED_GRAVITY_SPIN "LED gravity spin" -10 10 0.1 1 float
+        ;;
+      0|q|quit)
+        return 0
+        ;;
+    esac
+  done
+}
+
 open_setup() {
-  run_renderer --setup "$@"
+  export LIQUID_CONFIG="$config_file"
+  load_config
+
+  if dialog_available; then
+    run_dialog_setup "$@"
+  else
+    run_text_setup "$@"
+  fi
 }
 
 start_renderer() {

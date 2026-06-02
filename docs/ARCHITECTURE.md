@@ -40,8 +40,8 @@ Renderer settings are local installation state stored inside the checkout at:
 /home/artist/liquid/.liquid/settings.env
 ```
 
-The `.liquid/` directory is ignored by git. The setup UI writes this file, and
-normal `git pull` updates do not replace it.
+The `.liquid/` directory is ignored by git. The setup UI in `scripts/liquid`
+writes this file, and normal `git pull` updates do not replace it.
 
 Fresh images bake the command shim, systemd unit, shell loader files, repo
 checkout, and prebuilt renderer into the filesystem. Older already-flashed Pis
@@ -82,8 +82,10 @@ liquid restart
 `code/src/raster.rs` owns shared density-grid rasterization for renderers that
 turn particle positions into low-resolution pixel cells.
 
-`code/src/terminal.rs` owns the terminal renderer, settings loading, setup UI,
-terminal character/color presentation, and terminal lifecycle.
+`code/src/terminal.rs` owns the terminal renderer, settings loading, terminal
+character/color presentation, and terminal lifecycle. `scripts/liquid` owns the
+runtime menu, setup UI, and local settings writes for both terminal and LED
+matrix renderers.
 
 `code/src/led_matrix.rs` owns the optional WS2812B LED matrix renderer and
 hardware test patterns. It is compiled only with the `led-matrix` feature and
@@ -150,6 +152,5 @@ row-major indexing with odd rows reversed.
 LED settings are stored as additional non-secret values in
 `~/liquid/.liquid/settings.env` when the default file is created. Existing
 settings files continue to work because `scripts/liquid` supplies defaults when
-the LED-specific values are absent. The terminal setup screen only edits
-terminal renderer fields and preserves existing `LIQUID_LED_*` lines when it
-saves the shared settings file.
+the LED-specific values are absent. The setup UI edits both renderer families
+from the same shared local settings file.
