@@ -425,9 +425,11 @@ For the planned 3x2 chain of 8x8 panels, start with:
 liquid run-led --chain-cols 3 --chain-rows 2
 ```
 
-If the physical panel-to-panel chain does not behave like one continuous
-serpentine 24x16 matrix, use `liquid led-test --chain-cols 3 --chain-rows 2` to
-observe the order before adding a panel-aware mapping mode.
+Chained panels are mapped panel-by-panel by default: all pixels from panel 1,
+then all pixels from panel 2, and so on. This matches the usual physical
+connection pattern where `DOUT` from one 8x8 panel feeds `DIN` on the next.
+Use `--continuous-chain` only for hardware that is wired as one continuous
+serpentine matrix instead of separate chained panels.
 
 Run the windowed developer renderer on a machine with a display:
 

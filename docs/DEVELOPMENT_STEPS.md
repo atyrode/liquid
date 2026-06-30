@@ -12,6 +12,8 @@
 - The terminal renderer is a Rust library module with a thin example entrypoint.
 - The optional WS2812B LED matrix renderer builds as a separate example behind
   the `led-matrix` feature.
+- Chained WS2812B matrices map as separate physical panels by default, with a
+  `--continuous-chain` option for strip-like matrix wiring.
 - The renderer supports colors, selectable character sets, gravity spin,
   fixed-size grids, auto-size grids, bounded frame counts for smoke tests, and
   an interactive setup screen.
@@ -83,7 +85,8 @@ liquid run-led
 
 - Test `liquid led-orbit`, `liquid led-test`, and `liquid run-led` on the first
   8x8 WS2812B matrix.
-- Record the confirmed LED origin and row order in the local settings or docs.
+- Record the confirmed LED origin, row order, and panel chain order in the local
+  settings or docs.
 - Test `liquid` and `liquid setup` on the Pi console and over SSH.
 - Test `liquid restart` after saving setup changes.
 - Decide whether the terminal renderer should become its own crate if another

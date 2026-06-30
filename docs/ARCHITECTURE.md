@@ -147,9 +147,16 @@ Raspberry Pi 3 A+ using SPI0 MOSI. The renderer uses `rppal` for the Pi SPI bus,
 brightness/gamma handling.
 
 The LED renderer maps the shared density grid to LED colors, then maps display
-coordinates into physical LED indices with configurable origin and linear or
-serpentine row order. The defaults match the known Arduino/FastLED test mapping:
-row-major indexing with odd rows reversed.
+coordinates into physical LED indices. Chained matrices are mapped
+panel-by-panel by default: local coordinates are resolved inside each physical
+panel, and panel output starts after the previous panel's full pixel count.
+That matches the usual `DOUT` to `DIN` chain between 8x8 matrices. A
+`--continuous-chain` option keeps the older behavior for hardware wired as one
+continuous serpentine matrix.
+
+Within each panel, the configurable origin and linear or serpentine row order
+control how local display coordinates map to LED indices. The defaults match the
+known Arduino/FastLED test mapping: row-major indexing with odd rows reversed.
 
 LED settings are stored as additional non-secret values in
 `~/liquid/.liquid/settings.env` when the default file is created. Existing
