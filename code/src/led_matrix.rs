@@ -16,6 +16,7 @@ struct Config {
     panel_height: usize,
     chain_cols: usize,
     chain_rows: usize,
+    continuous_chain: bool,
     serpentine: bool,
     origin: Origin,
     color: LedColorTheme,
@@ -36,6 +37,7 @@ impl Config {
             panel_height: 8,
             chain_cols: 1,
             chain_rows: 1,
+            continuous_chain: false,
             serpentine: true,
             origin: Origin::TopLeft,
             color: LedColorTheme::DeepBlue,
@@ -66,6 +68,7 @@ impl Config {
                 }
                 "--chain-cols" => config.chain_cols = parse_next(&mut args, "--chain-cols")?,
                 "--chain-rows" => config.chain_rows = parse_next(&mut args, "--chain-rows")?,
+                "--continuous-chain" => config.continuous_chain = true,
                 "--serpentine" => config.serpentine = true,
                 "--linear" => config.serpentine = false,
                 "--origin" => {
@@ -131,8 +134,12 @@ impl Config {
         MatrixLayout {
             width: self.matrix_width(),
             height: self.matrix_height(),
+            panel_width: self.panel_width,
+            panel_height: self.panel_height,
+            chain_cols: self.chain_cols,
             serpentine: self.serpentine,
             origin: self.origin,
+            continuous_chain: self.continuous_chain,
         }
     }
 }
@@ -203,8 +210,12 @@ impl LedColorTheme {
 struct MatrixLayout {
     width: usize,
     height: usize,
+    panel_width: usize,
+    panel_height: usize,
+    chain_cols: usize,
     serpentine: bool,
     origin: Origin,
+    continuous_chain: bool,
 }
 
 impl MatrixLayout {
@@ -216,6 +227,14 @@ impl MatrixLayout {
         debug_assert!(x < self.width);
         debug_assert!(y < self.height);
 
+        if !self.continuous_chain {
+            return self.panel_pixel_index(x, y);
+        }
+
+        self.continuous_pixel_index(x, y)
+    }
+
+    fn continuous_pixel_index(self, x: usize, y: usize) -> usize {
         let (origin_x, origin_y) = match self.origin {
             Origin::TopLeft => (x, y),
             Origin::TopRight => (self.width - 1 - x, y),
@@ -226,6 +245,33 @@ impl MatrixLayout {
         let row_start = origin_y * self.width;
         if self.serpentine && origin_y % 2 == 1 {
             row_start + (self.width - 1 - origin_x)
+        } else {
+            row_start + origin_x
+        }
+    }
+
+    fn panel_pixel_index(self, x: usize, y: usize) -> usize {
+        let panel_col = x / self.panel_width;
+        let panel_row = y / self.panel_height;
+        let local_x = x % self.panel_width;
+        let local_y = y % self.panel_height;
+
+        let panel_index = panel_row * self.chain_cols + panel_col;
+        let panel_start = panel_index * self.panel_width * self.panel_height;
+        panel_start + self.local_panel_pixel_index(local_x, local_y)
+    }
+
+    fn local_panel_pixel_index(self, x: usize, y: usize) -> usize {
+        let (origin_x, origin_y) = match self.origin {
+            Origin::TopLeft => (x, y),
+            Origin::TopRight => (self.panel_width - 1 - x, y),
+            Origin::BottomLeft => (x, self.panel_height - 1 - y),
+            Origin::BottomRight => (self.panel_width - 1 - x, self.panel_height - 1 - y),
+        };
+
+        let row_start = origin_y * self.panel_width;
+        if self.serpentine && origin_y % 2 == 1 {
+            row_start + (self.panel_width - 1 - origin_x)
         } else {
             row_start + origin_x
         }
@@ -248,7 +294,7 @@ fn run_hardware_test(config: &Config) -> Result<(), String> {
     let mut output = LedOutput::new(layout, config.spi_hz)?;
 
     println!(
-        "Testing {}x{} WS2812B matrix, brightness {}, origin {}, {} wiring.",
+        "Testing {}x{} WS2812B matrix, brightness {}, origin {}, {} wiring, {} chain mapping.",
         layout.width,
         layout.height,
         config.brightness,
@@ -257,6 +303,11 @@ fn run_hardware_test(config: &Config) -> Result<(), String> {
             "serpentine"
         } else {
             "linear"
+        },
+        if config.continuous_chain {
+            "continuous"
+        } else {
+            "panel"
         }
     );
 
@@ -302,7 +353,7 @@ fn run_orbit_test(config: &Config) -> Result<(), String> {
     let mut progress = 0.0_f64;
 
     println!(
-        "Running green orbit test on {}x{} WS2812B matrix, brightness {}, origin {}, {} wiring.",
+        "Running green orbit test on {}x{} WS2812B matrix, brightness {}, origin {}, {} wiring, {} chain mapping.",
         layout.width,
         layout.height,
         config.brightness,
@@ -311,6 +362,11 @@ fn run_orbit_test(config: &Config) -> Result<(), String> {
             "serpentine"
         } else {
             "linear"
+        },
+        if config.continuous_chain {
+            "continuous"
+        } else {
+            "panel"
         }
     );
 
@@ -515,9 +571,10 @@ Options:\n\
   --panel-height N    Height of one panel [default: 8]\n\
   --chain-cols N      Number of panels chained horizontally [default: 1]\n\
   --chain-rows N      Number of panels chained vertically [default: 1]\n\
+  --continuous-chain  Treat chained panels as one continuous serpentine matrix\n\
   --serpentine        Use zig-zag wiring order [default]\n\
   --linear            Use left-to-right wiring on every row\n\
-  --origin NAME       First LED corner: top-left, top-right, bottom-left, bottom-right [default: top-left]\n\
+  --origin NAME       First LED corner inside each panel: top-left, top-right, bottom-left, bottom-right [default: top-left]\n\
   --color THEME       Color theme: deep-blue, blue, cyan, white [default: deep-blue]\n\
   --brightness N      Smart-leds brightness limit, 0-255 [default: 16]\n\
   --spi-hz N          SPI clock in Hz, 2000000-3800000 [default: 3000000]\n\
@@ -533,14 +590,22 @@ Options:\n\
 mod tests {
     use super::*;
 
-    #[test]
-    fn serpentine_top_left_mapping_alternates_rows() {
-        let layout = MatrixLayout {
-            width: 4,
-            height: 2,
+    fn single_panel_layout(width: usize, height: usize) -> MatrixLayout {
+        MatrixLayout {
+            width,
+            height,
+            panel_width: width,
+            panel_height: height,
+            chain_cols: 1,
             serpentine: true,
             origin: Origin::TopLeft,
-        };
+            continuous_chain: false,
+        }
+    }
+
+    #[test]
+    fn serpentine_top_left_mapping_alternates_rows() {
+        let layout = single_panel_layout(4, 2);
 
         assert_eq!(layout.pixel_index(0, 0), 0);
         assert_eq!(layout.pixel_index(3, 0), 3);
@@ -551,16 +616,55 @@ mod tests {
     #[test]
     fn origin_flips_display_coordinates_before_serpentine_mapping() {
         let layout = MatrixLayout {
-            width: 4,
-            height: 2,
-            serpentine: true,
             origin: Origin::BottomRight,
+            ..single_panel_layout(4, 2)
         };
 
         assert_eq!(layout.pixel_index(3, 1), 0);
         assert_eq!(layout.pixel_index(0, 1), 3);
         assert_eq!(layout.pixel_index(3, 0), 7);
         assert_eq!(layout.pixel_index(0, 0), 4);
+    }
+
+    #[test]
+    fn chained_panels_start_each_panel_after_the_previous_panel() {
+        let layout = MatrixLayout {
+            width: 16,
+            height: 8,
+            panel_width: 8,
+            panel_height: 8,
+            chain_cols: 2,
+            serpentine: true,
+            origin: Origin::TopLeft,
+            continuous_chain: false,
+        };
+
+        assert_eq!(layout.pixel_index(0, 0), 0);
+        assert_eq!(layout.pixel_index(7, 0), 7);
+        assert_eq!(layout.pixel_index(0, 1), 15);
+        assert_eq!(layout.pixel_index(7, 1), 8);
+
+        assert_eq!(layout.pixel_index(8, 0), 64);
+        assert_eq!(layout.pixel_index(15, 0), 71);
+        assert_eq!(layout.pixel_index(8, 1), 79);
+        assert_eq!(layout.pixel_index(15, 1), 72);
+    }
+
+    #[test]
+    fn continuous_chain_keeps_old_whole_matrix_mapping() {
+        let layout = MatrixLayout {
+            width: 16,
+            height: 8,
+            panel_width: 8,
+            panel_height: 8,
+            chain_cols: 2,
+            serpentine: true,
+            origin: Origin::TopLeft,
+            continuous_chain: true,
+        };
+
+        assert_eq!(layout.pixel_index(8, 0), 8);
+        assert_eq!(layout.pixel_index(8, 1), 23);
     }
 
     #[test]

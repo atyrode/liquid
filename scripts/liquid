@@ -26,8 +26,10 @@ Commands:
   run-led [ARGS...]    Run the renderer on a WS2812B LED matrix.
   led-test [ARGS...]   Run RGB/chase/row tests on a WS2812B LED matrix.
   led-orbit [ARGS...]  Run the green orbit LED matrix test.
-  start [--attach]     Start the renderer in tmux.
-  restart [--attach]   Restart the tmux renderer.
+  start [--attach] [--led|--no-led]
+                       Start the renderer in tmux.
+  restart [--attach] [--led|--no-led]
+                       Restart the tmux renderer.
   attach               Attach to the tmux renderer.
   stop                 Stop the tmux renderer.
   update [BRANCH]      Pull the current Git branch, or switch to BRANCH first.
@@ -60,6 +62,7 @@ LIQUID_STATUS=0
 LIQUID_AUTO_SIZE=1
 LIQUID_COLS=100
 LIQUID_ROWS=50
+LIQUID_LED_ENABLED=0
 LIQUID_LED_PANEL_WIDTH=8
 LIQUID_LED_PANEL_HEIGHT=8
 LIQUID_LED_CHAIN_COLS=1
@@ -68,8 +71,6 @@ LIQUID_LED_SERPENTINE=1
 LIQUID_LED_ORIGIN=top-left
 LIQUID_LED_BRIGHTNESS=16
 LIQUID_LED_SPI_HZ=3000000
-LIQUID_LED_FPS=30
-LIQUID_LED_PARTICLES=500
 EOF
 }
 
@@ -126,6 +127,8 @@ build_renderer_args() {
 }
 
 build_led_renderer_args() {
+  local simulation_source="${1:-led}"
+
   led_args=(
     --panel-width "${LIQUID_LED_PANEL_WIDTH:-8}"
     --panel-height "${LIQUID_LED_PANEL_HEIGHT:-8}"
@@ -134,11 +137,23 @@ build_led_renderer_args() {
     --origin "${LIQUID_LED_ORIGIN:-top-left}"
     --brightness "${LIQUID_LED_BRIGHTNESS:-16}"
     --spi-hz "${LIQUID_LED_SPI_HZ:-3000000}"
-    --fps "${LIQUID_LED_FPS:-30}"
-    --particles "${LIQUID_LED_PARTICLES:-500}"
-    --color "${LIQUID_LED_COLOR:-${LIQUID_COLOR:-deep-blue}}"
-    --gravity-spin "${LIQUID_LED_GRAVITY_SPIN:-${LIQUID_GRAVITY_SPIN:-1}}"
   )
+
+  if [ "$simulation_source" = "shared" ]; then
+    led_args+=(
+      --fps "${LIQUID_FPS:-60}"
+      --particles "${LIQUID_PARTICLES:-500}"
+      --color "${LIQUID_COLOR:-deep-blue}"
+      --gravity-spin "${LIQUID_GRAVITY_SPIN:-1}"
+    )
+  else
+    led_args+=(
+      --fps "${LIQUID_LED_FPS:-${LIQUID_FPS:-30}}"
+      --particles "${LIQUID_LED_PARTICLES:-${LIQUID_PARTICLES:-500}}"
+      --color "${LIQUID_LED_COLOR:-${LIQUID_COLOR:-deep-blue}}"
+      --gravity-spin "${LIQUID_LED_GRAVITY_SPIN:-${LIQUID_GRAVITY_SPIN:-1}}"
+    )
+  fi
 
   case "${LIQUID_LED_SERPENTINE:-1}" in
     1|true|yes|on)
@@ -149,6 +164,18 @@ build_led_renderer_args() {
       ;;
     *)
       echo "Invalid LIQUID_LED_SERPENTINE value: ${LIQUID_LED_SERPENTINE}" >&2
+      exit 2
+      ;;
+  esac
+
+  case "${LIQUID_LED_CONTINUOUS_CHAIN:-0}" in
+    1|true|yes|on)
+      led_args+=(--continuous-chain)
+      ;;
+    0|false|no|off|"")
+      ;;
+    *)
+      echo "Invalid LIQUID_LED_CONTINUOUS_CHAIN value: ${LIQUID_LED_CONTINUOUS_CHAIN}" >&2
       exit 2
       ;;
   esac
@@ -204,6 +231,14 @@ run_led_renderer() {
   exec "$led_matrix_bin" "${led_args[@]}" "$@"
 }
 
+run_led_renderer_with_shared_simulation() {
+  export LIQUID_CONFIG="$config_file"
+  load_config
+  ensure_led_matrix_binary
+  build_led_renderer_args shared
+  exec "$led_matrix_bin" "${led_args[@]}" "$@"
+}
+
 run_led_test() {
   run_led_renderer --test "$@"
 }
@@ -220,8 +255,42 @@ open_setup() {
   run_renderer --setup "$@"
 }
 
+led_output_enabled() {
+  case "${LIQUID_LED_ENABLED:-0}" in
+    1|true|yes|on)
+      return 0
+      ;;
+    0|false|no|off|"")
+      return 1
+      ;;
+    *)
+      echo "Invalid LIQUID_LED_ENABLED value: ${LIQUID_LED_ENABLED}" >&2
+      exit 2
+      ;;
+  esac
+}
+
+start_tmux_renderers() {
+  local run_led="$1"
+
+  if ! tmux has-session -t "$session" 2>/dev/null; then
+    tmux new-session -d -s "$session" -n terminal -c "$repo_dir" "$repo_dir/scripts/liquid run"
+    if [ "$run_led" -eq 1 ]; then
+      tmux new-window -d -t "$session:" -n led -c "$repo_dir" "$repo_dir/scripts/liquid run-led-sync"
+    fi
+    return
+  fi
+
+  if [ "$run_led" -eq 1 ] &&
+    ! tmux list-windows -t "$session" -F '#{window_name}' | grep -qx led; then
+    tmux new-window -d -t "$session:" -n led -c "$repo_dir" "$repo_dir/scripts/liquid run-led-sync"
+  fi
+}
+
 start_renderer() {
   local attach=0
+  local led_override=""
+  local run_led=0
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -229,8 +298,16 @@ start_renderer() {
         attach=1
         shift
         ;;
+      --led)
+        led_override=1
+        shift
+        ;;
+      --no-led)
+        led_override=0
+        shift
+        ;;
       -h|--help)
-        echo "Usage: liquid start [--attach]"
+        echo "Usage: liquid start [--attach] [--led|--no-led]"
         exit 0
         ;;
       *)
@@ -240,24 +317,37 @@ start_renderer() {
     esac
   done
 
+  load_config
+  if [ -n "$led_override" ]; then
+    run_led="$led_override"
+  elif led_output_enabled; then
+    run_led=1
+  fi
+
   if ! command -v tmux >/dev/null 2>&1; then
+    if [ "$run_led" -eq 1 ]; then
+      echo "tmux is required to run terminal and LED renderers together; starting terminal only." >&2
+    fi
     run_renderer
   fi
 
-  if ! tmux has-session -t "$session" 2>/dev/null; then
-    tmux new-session -d -s "$session" -c "$repo_dir" "$repo_dir/scripts/liquid run"
-  fi
+  start_tmux_renderers "$run_led"
 
   if [ "$attach" -eq 1 ]; then
     exec tmux attach-session -t "$session"
   fi
 
   echo "Liquid renderer is running in tmux session: $session"
+  if [ "$run_led" -eq 1 ]; then
+    echo "Matrix renderer is running in tmux window: led"
+  fi
   echo "Attach with: liquid attach"
 }
 
 restart_renderer() {
   local attach=0
+  local led_override=""
+  local run_led=0
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -265,8 +355,16 @@ restart_renderer() {
         attach=1
         shift
         ;;
+      --led)
+        led_override=1
+        shift
+        ;;
+      --no-led)
+        led_override=0
+        shift
+        ;;
       -h|--help)
-        echo "Usage: liquid restart [--attach]"
+        echo "Usage: liquid restart [--attach] [--led|--no-led]"
         exit 0
         ;;
       *)
@@ -276,7 +374,17 @@ restart_renderer() {
     esac
   done
 
+  load_config
+  if [ -n "$led_override" ]; then
+    run_led="$led_override"
+  elif led_output_enabled; then
+    run_led=1
+  fi
+
   if ! command -v tmux >/dev/null 2>&1; then
+    if [ "$run_led" -eq 1 ]; then
+      echo "tmux is required to run terminal and LED renderers together; starting terminal only." >&2
+    fi
     run_renderer
   fi
 
@@ -284,13 +392,16 @@ restart_renderer() {
     tmux kill-session -t "$session"
   fi
 
-  tmux new-session -d -s "$session" -c "$repo_dir" "$repo_dir/scripts/liquid run"
+  start_tmux_renderers "$run_led"
 
   if [ "$attach" -eq 1 ]; then
     exec tmux attach-session -t "$session"
   fi
 
   echo "Liquid renderer restarted in tmux session: $session"
+  if [ "$run_led" -eq 1 ]; then
+    echo "Matrix renderer is running in tmux window: led"
+  fi
   echo "Attach with: liquid attach"
 }
 
@@ -760,6 +871,9 @@ dispatch() {
       ;;
     run-led|led-run)
       run_led_renderer "$@"
+      ;;
+    run-led-sync)
+      run_led_renderer_with_shared_simulation "$@"
       ;;
     led-test|test-led)
       run_led_test "$@"

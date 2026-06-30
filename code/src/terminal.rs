@@ -40,6 +40,12 @@ const TERMINAL_SETTING_KEYS: &[&str] = &[
     "LIQUID_FRAMES",
     "LIQUID_STATUS",
 ];
+const MANAGED_LED_SETTING_KEYS: &[&str] = &[
+    "LIQUID_LED_ENABLED",
+    "LIQUID_LED_CHAIN_COLS",
+    "LIQUID_LED_CHAIN_ROWS",
+    "LIQUID_LED_BRIGHTNESS",
+];
 
 #[derive(Debug, Clone)]
 struct Config {
@@ -53,6 +59,10 @@ struct Config {
     fps: u64,
     frames: Option<usize>,
     show_status: bool,
+    led_enabled: bool,
+    led_chain_cols: usize,
+    led_chain_rows: usize,
+    led_brightness: u8,
 }
 
 impl Config {
@@ -68,6 +78,10 @@ impl Config {
             fps: 60,
             frames: None,
             show_status: false,
+            led_enabled: false,
+            led_chain_cols: 1,
+            led_chain_rows: 1,
+            led_brightness: 16,
         }
     }
 
@@ -145,6 +159,11 @@ impl Config {
                 self.apply_setting(key, value.as_str())?;
             }
         }
+        for key in MANAGED_LED_SETTING_KEYS {
+            if let Ok(value) = env::var(key) {
+                self.apply_setting(key, value.as_str())?;
+            }
+        }
 
         Ok(())
     }
@@ -160,6 +179,10 @@ impl Config {
             "LIQUID_PARTICLES" => self.particles = parse_setting(value, key)?,
             "LIQUID_FPS" => self.fps = parse_setting(value, key)?,
             "LIQUID_STATUS" => self.show_status = parse_bool(value, key)?,
+            "LIQUID_LED_ENABLED" => self.led_enabled = parse_bool(value, key)?,
+            "LIQUID_LED_CHAIN_COLS" => self.led_chain_cols = parse_setting(value, key)?,
+            "LIQUID_LED_CHAIN_ROWS" => self.led_chain_rows = parse_setting(value, key)?,
+            "LIQUID_LED_BRIGHTNESS" => self.led_brightness = parse_setting(value, key)?,
             "LIQUID_FRAMES" => {
                 self.frames = if value.is_empty() {
                     None
@@ -179,6 +202,9 @@ impl Config {
         }
         if self.fps == 0 {
             return Err("fps must be greater than zero".to_string());
+        }
+        if self.led_chain_cols == 0 || self.led_chain_rows == 0 {
+            return Err("LED chain dimensions must be greater than zero".to_string());
         }
         if !self.gravity_spin.is_finite() {
             return Err("gravity spin must be a finite number".to_string());
@@ -562,6 +588,10 @@ enum SetupItem {
     AutoSize,
     Cols,
     Rows,
+    LedEnabled,
+    LedChainCols,
+    LedChainRows,
+    LedBrightness,
     SaveStart,
     Quit,
 }
@@ -583,6 +613,10 @@ const SETUP_ITEMS: &[SetupItem] = &[
     SetupItem::AutoSize,
     SetupItem::Cols,
     SetupItem::Rows,
+    SetupItem::LedEnabled,
+    SetupItem::LedChainCols,
+    SetupItem::LedChainRows,
+    SetupItem::LedBrightness,
     SetupItem::SaveStart,
     SetupItem::Quit,
 ];
@@ -665,7 +699,11 @@ fn run_setup(mut config: Config) -> Result<Option<Config>, String> {
                     return Ok(Some(config));
                 }
                 SetupItem::Quit => return Ok(None),
-                SetupItem::Color | SetupItem::Charset | SetupItem::Status | SetupItem::AutoSize => {
+                SetupItem::Color
+                | SetupItem::Charset
+                | SetupItem::Status
+                | SetupItem::AutoSize
+                | SetupItem::LedEnabled => {
                     adjust_setup_value(&mut config, SETUP_ITEMS[selected], 1, SetupStep::Fine);
                 }
                 _ => {}
@@ -721,6 +759,10 @@ fn render_setup_row(
         SetupItem::AutoSize => "Auto size",
         SetupItem::Cols => "Columns",
         SetupItem::Rows => "Rows",
+        SetupItem::LedEnabled => "LED matrix",
+        SetupItem::LedChainCols => "LED columns",
+        SetupItem::LedChainRows => "LED rows",
+        SetupItem::LedBrightness => "LED brightness",
         SetupItem::SaveStart => "Save + start",
         SetupItem::Quit => "Quit",
     };
@@ -760,6 +802,16 @@ fn render_setup_row(
                 config.rows.to_string()
             }
         }
+        SetupItem::LedEnabled => {
+            if config.led_enabled {
+                "on with start".to_string()
+            } else {
+                "off".to_string()
+            }
+        }
+        SetupItem::LedChainCols => config.led_chain_cols.to_string(),
+        SetupItem::LedChainRows => config.led_chain_rows.to_string(),
+        SetupItem::LedBrightness => config.led_brightness.to_string(),
         SetupItem::SaveStart => settings_path()
             .map(|path| format!("write {}", path.display()))
             .unwrap_or_else(|| "settings path unavailable".to_string()),
@@ -769,7 +821,7 @@ fn render_setup_row(
     queue!(
         stdout,
         MoveTo(0, (index + 3) as u16),
-        Print(format!("{label:<14} {value:<60}")),
+        Print(format!("{label:<16} {value:<58}")),
         SetAttribute(Attribute::Reset),
         Print("\n")
     )
@@ -816,6 +868,19 @@ fn adjust_setup_value(config: &mut Config, item: SetupItem, direction: i32, step
         SetupItem::Rows => {
             config.rows = adjust_usize(config.rows, direction, 1, 200, step.usize(1, 10));
         }
+        SetupItem::LedEnabled => config.led_enabled = !config.led_enabled,
+        SetupItem::LedChainCols => {
+            config.led_chain_cols =
+                adjust_usize(config.led_chain_cols, direction, 1, 16, step.usize(1, 2));
+        }
+        SetupItem::LedChainRows => {
+            config.led_chain_rows =
+                adjust_usize(config.led_chain_rows, direction, 1, 16, step.usize(1, 2));
+        }
+        SetupItem::LedBrightness => {
+            config.led_brightness =
+                adjust_u8(config.led_brightness, direction, 0, 255, step.u8(1, 8));
+        }
         SetupItem::Start | SetupItem::SaveStart | SetupItem::Quit => {}
     }
 }
@@ -841,6 +906,13 @@ impl SetupStep {
             Self::Rough => rough,
         }
     }
+
+    fn u8(self, fine: u8, rough: u8) -> u8 {
+        match self {
+            Self::Fine => fine,
+            Self::Rough => rough,
+        }
+    }
 }
 
 fn adjust_usize(value: usize, direction: i32, min: usize, max: usize, step: usize) -> usize {
@@ -852,6 +924,14 @@ fn adjust_usize(value: usize, direction: i32, min: usize, max: usize, step: usiz
 }
 
 fn adjust_u64(value: u64, direction: i32, min: u64, max: u64, step: u64) -> u64 {
+    if direction >= 0 {
+        value.saturating_add(step).min(max)
+    } else {
+        value.saturating_sub(step).max(min)
+    }
+}
+
+fn adjust_u8(value: u8, direction: i32, min: u8, max: u8, step: u8) -> u8 {
     if direction >= 0 {
         value.saturating_add(step).min(max)
     } else {
@@ -893,7 +973,11 @@ LIQUID_GRAVITY_SPIN={:.1}\n\
 LIQUID_STATUS={}\n\
 LIQUID_AUTO_SIZE={}\n\
 LIQUID_COLS={}\n\
-LIQUID_ROWS={}\n",
+LIQUID_ROWS={}\n\
+LIQUID_LED_ENABLED={}\n\
+LIQUID_LED_CHAIN_COLS={}\n\
+LIQUID_LED_CHAIN_ROWS={}\n\
+LIQUID_LED_BRIGHTNESS={}\n",
         config.particles,
         config.fps,
         config.color.as_arg(),
@@ -902,7 +986,11 @@ LIQUID_ROWS={}\n",
         if config.show_status { 1 } else { 0 },
         if config.auto_size { 1 } else { 0 },
         config.cols,
-        config.rows
+        config.rows,
+        if config.led_enabled { 1 } else { 0 },
+        config.led_chain_cols,
+        config.led_chain_rows,
+        config.led_brightness
     )
 }
 
@@ -916,7 +1004,8 @@ fn preserved_led_settings(path: &Path) -> Result<Vec<String>, String> {
         .filter_map(|line| {
             let trimmed = line.trim();
             let (key, _) = trimmed.split_once('=')?;
-            if key.trim().starts_with("LIQUID_LED_") {
+            let key = key.trim();
+            if key.starts_with("LIQUID_LED_") && !MANAGED_LED_SETTING_KEYS.contains(&key) {
                 Some(trimmed.to_string())
             } else {
                 None
@@ -1118,8 +1207,10 @@ mod tests {
             &path,
             "\
 LIQUID_PARTICLES=500
+LIQUID_LED_ENABLED=1
 LIQUID_LED_PANEL_WIDTH=8
 LIQUID_LED_CHAIN_COLS=3
+LIQUID_LED_BRIGHTNESS=4
 IGNORED_VALUE=yes
 LIQUID_LED_ORIGIN=bottom-left
 ",
@@ -1133,10 +1224,26 @@ LIQUID_LED_ORIGIN=bottom-left
             preserved,
             vec![
                 "LIQUID_LED_PANEL_WIDTH=8".to_string(),
-                "LIQUID_LED_CHAIN_COLS=3".to_string(),
                 "LIQUID_LED_ORIGIN=bottom-left".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn setup_save_writes_managed_led_settings() {
+        let config = Config {
+            led_enabled: true,
+            led_chain_cols: 3,
+            led_chain_rows: 2,
+            led_brightness: 8,
+            ..Config::defaults()
+        };
+        let contents = terminal_settings_contents(&config);
+
+        assert!(contents.contains("LIQUID_LED_ENABLED=1\n"));
+        assert!(contents.contains("LIQUID_LED_CHAIN_COLS=3\n"));
+        assert!(contents.contains("LIQUID_LED_CHAIN_ROWS=2\n"));
+        assert!(contents.contains("LIQUID_LED_BRIGHTNESS=8\n"));
     }
 
     #[test]
@@ -1157,6 +1264,15 @@ LIQUID_LED_ORIGIN=bottom-left
 
         adjust_setup_value(&mut config, SetupItem::GravitySpin, -1, SetupStep::Rough);
         assert_eq!(config.gravity_spin, 0.0);
+
+        adjust_setup_value(&mut config, SetupItem::LedEnabled, 1, SetupStep::Fine);
+        assert!(config.led_enabled);
+
+        adjust_setup_value(&mut config, SetupItem::LedChainCols, 1, SetupStep::Fine);
+        assert_eq!(config.led_chain_cols, 2);
+
+        adjust_setup_value(&mut config, SetupItem::LedBrightness, 1, SetupStep::Rough);
+        assert_eq!(config.led_brightness, 24);
     }
 }
 

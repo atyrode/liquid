@@ -110,9 +110,16 @@ debugging, for example `liquid setup`, `liquid restart`, `liquid led-test`, or
 The setup screen starts the renderer immediately if you press Enter. Move
 through values with up/down, use left/right to adjust the selected value, and
 use Ctrl+left/right or PageUp/PageDown for larger jumps. Choose `Save + start`
-to write `~/liquid/.liquid/settings.env` before launching. The default runtime
-settings are 500 particles, 60 FPS, auto-size on, deep-blue color, classic
-charset, and no changing status line.
+to write `~/liquid/.liquid/settings.env` and preview the terminal renderer. The
+default runtime settings are 500 particles, 60 FPS, auto-size on, deep-blue
+color, classic charset, and no changing status line.
+
+The setup screen also has LED matrix controls. Turn `LED matrix` on, set the
+physical chain columns/rows, and choose a conservative brightness before using
+`liquid start` or `liquid restart`. When LED output is enabled, `start` runs the
+terminal renderer and matrix renderer together in the `liquid` tmux session.
+The terminal renderer is in the `terminal` tmux window; the matrix renderer runs
+in the `led` window.
 
 The renderer hides the changing status line by default to avoid flicker in tmux
 and SSH terminals. Enable it only when debugging with `--status` or
@@ -375,6 +382,20 @@ scripts/liquid setup
 The setup screen uses up/down to select settings, left/right for fine changes,
 and Ctrl+left/right or PageUp/PageDown for rough changes.
 
+Run the terminal renderer and LED matrix renderer together after saving setup
+changes:
+
+```sh
+scripts/liquid start --led
+scripts/liquid restart --led
+```
+
+When `LIQUID_LED_ENABLED=1` is saved by setup, plain `scripts/liquid start` and
+`scripts/liquid restart` also start the matrix renderer. Use `--no-led` for a
+terminal-only run. The paired start path uses the shared setup values for
+particles, FPS, color, and gravity spin; matrix dimensions and brightness remain
+LED-specific settings.
+
 For a bounded smoke test that exits on its own:
 
 ```sh
@@ -425,9 +446,11 @@ For the planned 3x2 chain of 8x8 panels, start with:
 liquid run-led --chain-cols 3 --chain-rows 2
 ```
 
-If the physical panel-to-panel chain does not behave like one continuous
-serpentine 24x16 matrix, use `liquid led-test --chain-cols 3 --chain-rows 2` to
-observe the order before adding a panel-aware mapping mode.
+Chained panels are mapped panel-by-panel by default: all pixels from panel 1,
+then all pixels from panel 2, and so on. This matches the usual physical
+connection pattern where `DOUT` from one 8x8 panel feeds `DIN` on the next.
+Use `--continuous-chain` only for hardware that is wired as one continuous
+serpentine matrix instead of separate chained panels.
 
 Run the windowed developer renderer on a machine with a display:
 
