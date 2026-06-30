@@ -43,6 +43,12 @@ Renderer settings are local installation state stored inside the checkout at:
 The `.liquid/` directory is ignored by git. The setup UI writes this file, and
 normal `git pull` updates do not replace it.
 
+The setup UI owns shared simulation settings such as particle count, FPS, color,
+and gravity spin. It also owns the high-level LED runtime settings that affect
+`liquid start`: LED output enabled, chain columns/rows, and brightness. Lower
+level LED settings such as panel dimensions, origin, row order, SPI speed, and
+continuous-chain mode are preserved when the setup UI rewrites the file.
+
 Fresh images bake the command shim, systemd unit, shell loader files, repo
 checkout, and prebuilt renderer into the filesystem. Older already-flashed Pis
 can migrate to the same layout with one repo-owned action:
@@ -78,6 +84,12 @@ After changing settings, restart the detached renderer with:
 ```sh
 liquid restart
 ```
+
+When `LIQUID_LED_ENABLED=1`, `liquid start` and `liquid restart` create two tmux
+windows in the same session: `terminal` for the terminal renderer and `led` for
+the matrix renderer. The LED renderer is started through an internal sync path
+that uses the shared setup values for particles, FPS, color, and gravity spin so
+the terminal and physical matrix are easy to compare.
 
 ## Rust Source Layout
 

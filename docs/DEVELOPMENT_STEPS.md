@@ -14,6 +14,8 @@
   the `led-matrix` feature.
 - Chained WS2812B matrices map as separate physical panels by default, with a
   `--continuous-chain` option for strip-like matrix wiring.
+- `liquid start` and `liquid restart` can run terminal and LED matrix renderers
+  together when LED output is enabled in setup.
 - The renderer supports colors, selectable character sets, gravity spin,
   fixed-size grids, auto-size grids, bounded frame counts for smoke tests, and
   an interactive setup screen.
@@ -29,6 +31,7 @@ liquid led-orbit
 liquid led-test
 liquid run-led
 liquid restart
+liquid start --led
 liquid attach
 liquid update
 ```
@@ -88,7 +91,8 @@ liquid run-led
 - Record the confirmed LED origin, row order, and panel chain order in the local
   settings or docs.
 - Test `liquid` and `liquid setup` on the Pi console and over SSH.
-- Test `liquid restart` after saving setup changes.
+- Test `liquid start --led` and `liquid restart --led` after saving setup
+  changes.
 - Decide whether the terminal renderer should become its own crate if another
   renderer target appears.
 - Improve Bluetooth pairing once the current dialog wrapper failure mode is
