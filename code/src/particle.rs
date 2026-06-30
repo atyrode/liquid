@@ -88,7 +88,7 @@ pub struct Particles {
 
 use rand::RngExt;
 
-const GRAVITY: f64 = -900.;
+const GRAVITY: f64 = -1900.;
 
 impl Particles {
     pub fn new(amount: usize, board_width: f64, board_height: f64) -> Particles {
